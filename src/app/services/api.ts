@@ -1,4 +1,4 @@
-import type { ApiResponse, Produto, Cliente, Fornecedor, Pedido, EstoqueItem, KPIs, EntregaData, StatusPedidoData, Config } from '../types';
+import type { ApiResponse, Produto, Cliente, Fornecedor, Pedido, EstoqueItem, KPIs, EntregaData, StatusPedidoData, Config, RelatorioVendas, RelatorioVendasProduto, RelatorioVendasCliente, RelatorioEstoque, RelatorioFinanceiro } from '../types';
 import { httpClient } from './httpClient';
 import {
   mockProdutos, mockClientes, mockFornecedores,
@@ -152,4 +152,23 @@ export const getConfig = async (): Promise<ApiResponse<Config | null>> => {
 
 export const updateConfig = async (data: Config): Promise<ApiResponse<Config>> => {
   return httpClient.put<ApiResponse<Config>>('/config', data);
+};
+
+// ── RELATÓRIOS (real API) ─────────────────────────────────
+export const RelatoriosAPI = {
+  vendas: async (inicio: string, fim: string): Promise<ApiResponse<RelatorioVendas>> => {
+    return httpClient.get<ApiResponse<RelatorioVendas>>(`/relatorios/vendas?inicio=${inicio}&fim=${fim}`);
+  },
+  vendasProdutos: async (inicio: string, fim: string, limite: number = 10): Promise<ApiResponse<RelatorioVendasProduto[]>> => {
+    return httpClient.get<ApiResponse<RelatorioVendasProduto[]>>(`/relatorios/vendas/produtos?inicio=${inicio}&fim=${fim}&limite=${limite}`);
+  },
+  vendasClientes: async (inicio: string, fim: string, limite: number = 10): Promise<ApiResponse<RelatorioVendasCliente[]>> => {
+    return httpClient.get<ApiResponse<RelatorioVendasCliente[]>>(`/relatorios/vendas/clientes?inicio=${inicio}&fim=${fim}&limite=${limite}`);
+  },
+  estoque: async (): Promise<ApiResponse<RelatorioEstoque>> => {
+    return httpClient.get<ApiResponse<RelatorioEstoque>>('/relatorios/estoque');
+  },
+  financeiro: async (inicio: string, fim: string): Promise<ApiResponse<RelatorioFinanceiro>> => {
+    return httpClient.get<ApiResponse<RelatorioFinanceiro>>(`/relatorios/financeiro?inicio=${inicio}&fim=${fim}`);
+  }
 };

@@ -127,3 +127,60 @@ export interface ApiResponse<T> {
     message: string;
   };
 }
+
+// ── RELATÓRIOS ──────────────────────────────────────────
+
+export interface RelatorioVendas {
+  total_pedidos: number;
+  total_itens: number;
+  valor_total: number;
+  periodo: { inicio: string; fim: string };
+  pedidos_por_status: {
+    status: string;
+    total: number;
+    valor: number;
+  }[];
+}
+
+export interface RelatorioVendasProduto {
+  produto_id: number;
+  produto_nome: string;
+  qtd_vendida: number;
+  valor_total: number;
+}
+
+export interface RelatorioVendasCliente {
+  cliente_id: number;
+  cliente_nome: string;
+  total_pedidos: number;
+  valor_total: number;
+}
+
+export interface RelatorioEstoque {
+  total_produtos: number;
+  total_itens_estoque: number;
+  valor_total_estoque: number;
+  produtos_abaixo_minimo: number;
+  produtos: {
+    id: number;
+    nome: string;
+    categoria: string;
+    estoque: number;
+    estoque_min: number;
+    preco: number;
+    valor_estoque: number;
+    status: string;
+  }[];
+}
+
+export interface RelatorioFinanceiro {
+  faturamento_total: number;
+  ticket_medio: number;
+  total_pedidos: number;
+  periodo: { inicio: string; fim: string };
+  faturamento_por_dia: {
+    dia: string;
+    total_pedidos: number;
+    valor: number;
+  }[];
+}
