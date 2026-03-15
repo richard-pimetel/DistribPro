@@ -1,44 +1,44 @@
 import React, { useEffect, useState } from 'react';
-import { getProdutos, updateProduto } from '../services/api';
-import type { Produto } from '../types';
-import { Badge } from '../components/ui/Badge';
-import { Package, AlertTriangle, TrendingUp, TrendingDown, CheckCircle } from 'lucide-react';
+import { getEstoque, patchEstoque } from '../services/api';
+import type { EstoqueItem } from '../types';
+import { Badge, StatusBadge } from '../components/ui/Badge';
+import { Package, AlertTriangle, TrendingUp, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 export function StockPage() {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [items, setItems] = useState<EstoqueItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [ajusteId, setAjusteId] = useState<string | null>(null);
-  const [ajusteQtd, setAjusteQtd] = useState<Record<string, number>>({});
+  const [ajusteId, setAjusteId] = useState<number | null>(null);
+  const [ajusteQtd, setAjusteQtd] = useState<Record<number, number>>({});
   const [saving, setSaving] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const res = await getProdutos();
-    if (res.success) setProdutos(res.data!.filter(p => p.status === 'ativo'));
+    const res = await getEstoque();
+    if (res.success) setItems(res.data!);
     setLoading(false);
   };
 
   useEffect(() => { load(); }, []);
 
-  const total = produtos.reduce((s, p) => s + p.estoque, 0);
-  const criticos = produtos.filter(p => p.estoque <= p.estoqueMinimo);
-  const valorEstoque = produtos.reduce((s, p) => s + p.estoque * p.custo, 0);
+  const total = items.reduce((s, p) => s + p.estoque, 0);
+  const criticos = items.filter(p => p.estoque <= p.estoque_min);
+  const totalAtivos = items.filter(p => p.status?.toLowerCase() === 'ativo').length;
 
-  const handleAjuste = async (p: Produto) => {
+  const handleAjuste = async (p: EstoqueItem) => {
     const qtd = ajusteQtd[p.id];
     if (qtd === undefined || isNaN(qtd)) { toast.error('Informe a quantidade.'); return; }
     setSaving(true);
-    const res = await updateProduto(p.id, { estoque: Math.max(0, qtd) });
+    const res = await patchEstoque(p.id, { estoque: Math.max(0, qtd) });
     if (res.success) { toast.success('Estoque ajustado!'); setAjusteId(null); load(); }
     else toast.error(res.error?.message);
     setSaving(false);
   };
 
-  const getStatus = (p: Produto) => {
+  const getStatus = (p: EstoqueItem) => {
     if (p.estoque === 0) return { label: 'Sem Estoque', color: '#FF453A', icon: <AlertTriangle size={14} color="#FF453A" /> };
-    if (p.estoque <= p.estoqueMinimo) return { label: 'Crítico', color: '#FFD60A', icon: <AlertTriangle size={14} color="#A07800" /> };
-    if (p.estoque <= p.estoqueMinimo * 2) return { label: 'Baixo', color: '#FF6B35', icon: <TrendingDown size={14} color="#FF6B35" /> };
+    if (p.estoque <= p.estoque_min) return { label: 'Crítico', color: '#FFD60A', icon: <AlertTriangle size={14} color="#A07800" /> };
+    if (p.estoque <= p.estoque_min * 2) return { label: 'Baixo', color: '#FF6B35', icon: <Package size={14} color="#FF6B35" /> };
     return { label: 'Normal', color: '#30D158', icon: <CheckCircle size={14} color="#30D158" /> };
   };
 
@@ -54,8 +54,8 @@ export function StockPage() {
         {[
           { label: 'Itens no Estoque', value: total.toLocaleString('pt-BR'), icon: <Package size={18} />, color: '#0A84FF' },
           { label: 'Produtos Críticos', value: criticos.length, icon: <AlertTriangle size={18} />, color: '#FF453A' },
-          { label: 'Produtos Ativos', value: produtos.length, icon: <CheckCircle size={18} />, color: '#30D158' },
-          { label: 'Valor do Estoque', value: `R$ ${(valorEstoque / 1000).toFixed(1)}K`, icon: <TrendingUp size={18} />, color: '#8B5CF6' },
+          { label: 'Produtos Ativos', value: totalAtivos, icon: <CheckCircle size={18} />, color: '#30D158' },
+          { label: 'Total de Itens', value: items.length, icon: <TrendingUp size={18} />, color: '#8B5CF6' },
         ].map((s, i) => (
           <div key={i} style={{ background: '#fff', borderRadius: '12px', border: '1px solid #DDE3EE', padding: '18px 20px', boxShadow: '0 2px 8px rgba(10,30,60,0.06)' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
@@ -77,15 +77,15 @@ export function StockPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#F5F7FA' }}>
-                  {['Produto', 'SKU', 'Categoria', 'Estoque Atual', 'Mínimo', 'Status', 'Ajustar'].map(h => (
+                  {['Produto', 'Categoria', 'Status', 'Saúde Estoque', 'Estoque Atual', 'Mínimo', 'Ajustar'].map(h => (
                     <th key={h} style={{ padding: '11px 18px', fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.9px', color: '#8896A5', textAlign: 'left', borderBottom: '1px solid #DDE3EE', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {produtos.map(p => {
+                {items.map(p => {
                   const st = getStatus(p);
-                  const pct = Math.min(100, (p.estoque / Math.max(1, p.estoqueMinimo * 3)) * 100);
+                  const pct = Math.min(100, (p.estoque / Math.max(1, p.estoque_min * 3)) * 100);
                   return (
                     <tr key={p.id}
                       onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(10,132,255,0.02)'}
@@ -100,7 +100,6 @@ export function StockPage() {
                           <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#0D1B2A' }}>{p.nome}</div>
                         </div>
                       </td>
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '12px', color: '#4A5568', fontFamily: 'monospace' }}>{p.sku}</td>
                       <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}><Badge variant="neutral">{p.categoria}</Badge></td>
                       <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
                         <div style={{ fontSize: '14px', fontWeight: 700, color: st.color }}>{p.estoque} un.</div>
@@ -108,7 +107,8 @@ export function StockPage() {
                           <div style={{ height: '100%', width: `${pct}%`, background: st.color, borderRadius: '99px', transition: 'width 0.3s' }} />
                         </div>
                       </td>
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{p.estoqueMinimo} un.</td>
+                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{p.estoque_min} un.</td>
+                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}><StatusBadge status={p.status?.toLowerCase() || 'inativo'} /></td>
                       <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                           {st.icon}

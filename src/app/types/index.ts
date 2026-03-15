@@ -6,6 +6,15 @@ export interface User {
   avatar?: string;
 }
 
+export interface EstoqueItem {
+  id: number;
+  nome: string;
+  categoria: string;
+  estoque: number;
+  estoque_min: number;
+  status: string;
+}
+
 export interface Produto {
   id: number | string;
   nome: string;
@@ -77,40 +86,36 @@ export interface Pedido {
 }
 
 export interface KPIs {
-  receita: number;
-  receitaVariacao: number;
-  pedidos: number;
-  pedidosVariacao: number;
-  clientes: number;
-  clientesVariacao: number;
-  ticketMedio: number;
-  ticketMedioVariacao: number;
+  total_produtos: number;
+  total_clientes: number;
+  total_fornecedores: number;
+  pedidos_pendentes: number;
+  pedidos_em_rota: number;
+  faturamento_total: number;
+  estoque_baixo: number;
 }
 
 export interface EntregaData {
   dia: string;
-  entregas: number;
-  vendas: number;
+  total: number;
 }
 
 export interface StatusPedidoData {
   status: string;
-  label: string;
-  count: number;
-  color: string;
+  total: number;
+  // UI helper fields (if needed, but usually derived in component)
+  label?: string;
+  color?: string;
 }
 
 export interface Config {
-  nomeEmpresa: string;
+  id?: number;
+  razao_social: string;
   cnpj: string;
   email: string;
-  telefone: string;
+  tel: string;
   endereco: string;
-  cidade: string;
-  estado: string;
-  cep: string;
-  website: string;
-  logo?: string;
+  atualizado_em?: string;
 }
 
 export interface ApiResponse<T> {

@@ -9,7 +9,7 @@ const estados = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG
 
 export function SettingsPage() {
   const [config, setConfig] = useState<Config | null>(null);
-  const [form, setForm] = useState<Config>({ nomeEmpresa: '', cnpj: '', email: '', telefone: '', endereco: '', cidade: '', estado: 'SP', cep: '', website: '' });
+  const [form, setForm] = useState<Config>({ razao_social: '', cnpj: '', email: '', tel: '', endereco: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<'empresa' | 'notificacoes' | 'seguranca'>('empresa');
@@ -17,16 +17,39 @@ export function SettingsPage() {
   useEffect(() => {
     getConfig().then(res => {
       if (res.success && res.data) { setConfig(res.data); setForm(res.data); }
+      else if (res.success && !res.data) {
+        // Not configured yet, keep empty form
+        setConfig(null);
+      }
       setLoading(false);
     });
   }, []);
 
   const handleSave = async () => {
     setSaving(true);
-    const res = await updateConfig(form);
-    if (res.success) { toast.success('Configurações salvas com sucesso!'); setConfig(res.data!); }
-    else toast.error(res.error?.message);
-    setSaving(false);
+    try {
+      // Backend PUT expects 'razaoSocial' in camelCase according to docs,
+      // but GET returns 'razao_social' in snake_case.
+      const payload = {
+        ...form,
+        razaoSocial: form.razao_social
+      };
+      
+      const res = await updateConfig(payload as any);
+      if (res.success) { 
+        toast.success('Configurações salvas com sucesso!'); 
+        if (res.data) {
+          setConfig(res.data); 
+          setForm(res.data);
+        }
+      } else {
+        toast.error(res.error?.message || 'Erro ao salvar configurações.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro inesperado ao salvar.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const tabStyle = (tab: string): React.CSSProperties => ({
@@ -77,8 +100,8 @@ export function SettingsPage() {
           </div>
           <div style={{ padding: '24px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '18px' }}>
-              <FormField label="Nome da Empresa" fullWidth required>
-                <Input value={form.nomeEmpresa} onChange={e => setForm(f => ({ ...f, nomeEmpresa: e.target.value }))} placeholder="Nome da empresa" />
+              <FormField label="Razão Social" fullWidth required>
+                <Input value={form.razao_social} onChange={e => setForm(f => ({ ...f, razao_social: e.target.value }))} placeholder="Razão Social da empresa" />
               </FormField>
               <FormField label="CNPJ">
                 <Input value={form.cnpj} onChange={e => setForm(f => ({ ...f, cnpj: e.target.value }))} placeholder="00.000.000/0001-00" />
@@ -87,24 +110,10 @@ export function SettingsPage() {
                 <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="contato@empresa.com" />
               </FormField>
               <FormField label="Telefone">
-                <Input value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(11) 3000-0000" />
-              </FormField>
-              <FormField label="Website">
-                <Input value={form.website} onChange={e => setForm(f => ({ ...f, website: e.target.value }))} placeholder="www.empresa.com.br" />
-              </FormField>
-              <FormField label="CEP">
-                <Input value={form.cep} onChange={e => setForm(f => ({ ...f, cep: e.target.value }))} placeholder="00000-000" />
+                <Input value={form.tel} onChange={e => setForm(f => ({ ...f, tel: e.target.value }))} placeholder="(11) 3333-4444" />
               </FormField>
               <FormField label="Endereço" fullWidth>
                 <Input value={form.endereco} onChange={e => setForm(f => ({ ...f, endereco: e.target.value }))} placeholder="Av. Principal, 123 - Sala 1" />
-              </FormField>
-              <FormField label="Cidade">
-                <Input value={form.cidade} onChange={e => setForm(f => ({ ...f, cidade: e.target.value }))} placeholder="Cidade" />
-              </FormField>
-              <FormField label="Estado">
-                <Select value={form.estado} onChange={e => setForm(f => ({ ...f, estado: e.target.value }))}>
-                  {estados.map(e => <option key={e} value={e}>{e}</option>)}
-                </Select>
               </FormField>
             </div>
 

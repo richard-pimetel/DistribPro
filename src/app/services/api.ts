@@ -1,4 +1,4 @@
-import type { ApiResponse, Produto, Cliente, Fornecedor, Pedido, KPIs, EntregaData, StatusPedidoData, Config } from '../types';
+import type { ApiResponse, Produto, Cliente, Fornecedor, Pedido, EstoqueItem, KPIs, EntregaData, StatusPedidoData, Config } from '../types';
 import { httpClient } from './httpClient';
 import {
   mockKPIs, mockEntregas, mockStatusPedidos,
@@ -11,20 +11,17 @@ export { authLogin, authLogout, authMe, authUpdatePerfil, authUpdateSenha } from
 
 const delay = (ms = 400) => new Promise(res => setTimeout(res, ms));
 
-// ── DASHBOARD ─────────────────────────────────────────────
+// ── DASHBOARD (real API) ──────────────────────────────────
 export const getDashboardKPIs = async (): Promise<ApiResponse<KPIs>> => {
-  await delay(400);
-  return { success: true, data: mockKPIs };
+  return httpClient.get<ApiResponse<KPIs>>('/dashboard/kpis');
 };
 
-export const getDashboardEntregas = async (_dias: number): Promise<ApiResponse<EntregaData[]>> => {
-  await delay(400);
-  return { success: true, data: mockEntregas };
+export const getDashboardEntregas = async (dias: number = 7): Promise<ApiResponse<EntregaData[]>> => {
+  return httpClient.get<ApiResponse<EntregaData[]>>(`/dashboard/entregas?dias=${dias}`);
 };
 
 export const getDashboardStatus = async (): Promise<ApiResponse<StatusPedidoData[]>> => {
-  await delay(400);
-  return { success: true, data: mockStatusPedidos };
+  return httpClient.get<ApiResponse<StatusPedidoData[]>>('/dashboard/status-pedidos');
 };
 
 // ── PRODUTOS (real API) ──────────────────────────────────
@@ -129,16 +126,20 @@ export const deletePedido = async (id: number | string): Promise<ApiResponse<nul
 
 export const updatePedidoStatus = patchPedidoStatus;
 
-// ── CONFIG ────────────────────────────────────────────────
-let config = { ...mockConfig };
-
-export const getConfig = async (): Promise<ApiResponse<Config>> => {
-  await delay(300);
-  return { success: true, data: { ...config } };
+// ── ESTOQUE (real API) ──────────────────────────────────
+export const getEstoque = async (): Promise<ApiResponse<EstoqueItem[]>> => {
+  return httpClient.get<ApiResponse<EstoqueItem[]>>('/estoque');
 };
 
-export const updateConfig = async (data: Partial<Config>): Promise<ApiResponse<Config>> => {
-  await delay(500);
-  config = { ...config, ...data };
-  return { success: true, data: { ...config } };
+export const patchEstoque = async (id: number | string, data: { estoque: number }): Promise<ApiResponse<EstoqueItem>> => {
+  return httpClient.patch<ApiResponse<EstoqueItem>>(`/estoque/${id}`, data);
+};
+
+// ── CONFIG ────────────────────────────────────────────────
+export const getConfig = async (): Promise<ApiResponse<Config | null>> => {
+  return httpClient.get<ApiResponse<Config | null>>('/config');
+};
+
+export const updateConfig = async (data: Config): Promise<ApiResponse<Config>> => {
+  return httpClient.put<ApiResponse<Config>>('/config', data);
 };
