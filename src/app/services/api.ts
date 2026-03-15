@@ -6,7 +6,8 @@ import {
 } from './mockData';
 
 // ── AUTH (real API) ──────────────────────────────────────
-export { authLogin, authLogout, authMe, authUpdatePerfil, authUpdateSenha } from './authService';
+import { authLogin, authLogout, authMe, authUpdatePerfil, authUpdateSenha } from './authService';
+export { authLogin, authLogout, authMe, authUpdatePerfil, authUpdateSenha };
 
 const delay = (ms = 400) => new Promise(res => setTimeout(res, ms));
 
@@ -152,6 +153,17 @@ export const getConfig = async (): Promise<ApiResponse<Config | null>> => {
 
 export const updateConfig = async (data: Config): Promise<ApiResponse<Config>> => {
   return httpClient.put<ApiResponse<Config>>('/config', data);
+};
+
+export const ConfigAPI = {
+  get: getConfig,
+  update: updateConfig
+};
+
+export const PerfilAPI = {
+  me: authMe,
+  updatePerfil: authUpdatePerfil,
+  updateSenha: authUpdateSenha
 };
 
 // ── RELATÓRIOS (real API) ─────────────────────────────────

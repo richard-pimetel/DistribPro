@@ -11,7 +11,7 @@ function buildHeaders(hasBody: boolean = false): HeadersInit {
     headers['Authorization'] = `Bearer ${token}`;
   }
   if (hasBody) {
-    headers['Content-Type'] = 'application/json';
+    headers['Content-Type'] = 'application/json; charset=utf-8';
   }
   return headers;
 }
@@ -30,9 +30,12 @@ async function handleResponse<T>(response: Response, endpoint: string): Promise<
   }
 
   if (!response.ok) {
+    const rawBody = await response.text();
+    console.error(`[API Error] ${response.status} ${response.url}`, rawBody);
+    
     let errorMessage = `Erro ${response.status}`;
     try {
-      const errorData = await response.json();
+      const errorData = JSON.parse(rawBody);
       // Handle different error structures from backend:
       // 1. { message: "msg" }
       // 2. { error: "msg" }
