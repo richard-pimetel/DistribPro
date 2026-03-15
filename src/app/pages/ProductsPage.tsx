@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Search, Edit2, Trash2, AlertTriangle, Package, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
-import { getProdutos, createProduto, updateProduto, deleteProduto } from '../services/api';
-import type { Produto } from '../types';
+import { getProdutos, createProduto, updateProduto, deleteProduto, getFornecedores } from '../services/api';
+import type { Produto, Fornecedor } from '../types';
 import { Badge, StatusBadge } from '../components/ui/Badge';
 import { Modal, ConfirmModal } from '../components/ui/Modal';
 import { FormField, Input, Select } from '../components/ui/FormField';
@@ -25,6 +25,7 @@ const empty: Omit<Produto, 'id' | 'criado_em' | 'atualizado_em'> = {
 
 export function ProductsPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [catFilter, setCatFilter] = useState('');
@@ -39,12 +40,11 @@ export function ProductsPage() {
   const load = async () => {
     setLoading(true);
     try {
-      const res = await getProdutos();
-      if (res.success && res.data) {
-        setProdutos(res.data);
-      } else {
-        toast.error(res.error?.message || 'Erro ao carregar produtos.');
-      }
+      const [pRes, fRes] = await Promise.all([getProdutos(), getFornecedores()]);
+      if (pRes.success && pRes.data) setProdutos(pRes.data);
+      if (fRes.success && fRes.data) setFornecedores(fRes.data);
+      
+      if (!pRes.success) toast.error(pRes.error?.message || 'Erro ao carregar produtos.');
     } catch (err: any) {
       toast.error(err.message || 'Erro de conexão.');
     } finally {
@@ -219,7 +219,9 @@ export function ProductsPage() {
                           </div>
                           <div>
                             <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#0D1B2A' }}>{p.nome}</div>
-                            <div style={{ fontSize: '11px', color: '#8896A5' }}>ID Fornecedor: {p.fornecedor_id}</div>
+                            <div style={{ fontSize: '11px', color: '#8896A5' }}>
+                              {fornecedores.find(f => Number(f.id) === Number(p.fornecedor_id))?.nome || `ID Fornecedor: ${p.fornecedor_id}`}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -288,8 +290,10 @@ export function ProductsPage() {
           <FormField label="Preço (R$)">
             <Input type="number" value={form.preco} onChange={e => setForm(f => ({ ...f, preco: Number(e.target.value) }))} min={0} step={0.01} />
           </FormField>
-          <FormField label="ID Fornecedor">
-            <Input type="number" value={form.fornecedor_id} onChange={e => setForm(f => ({ ...f, fornecedor_id: Number(e.target.value) }))} min={1} />
+          <FormField label="Fornecedor">
+            <Select value={form.fornecedor_id} onChange={e => setForm(f => ({ ...f, fornecedor_id: Number(e.target.value) }))}>
+              {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
+            </Select>
           </FormField>
           <FormField label="Estoque Atual">
             <Input type="number" value={form.estoque} onChange={e => setForm(f => ({ ...f, estoque: Number(e.target.value) }))} min={0} />

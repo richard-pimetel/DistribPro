@@ -1,17 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Search, Trash2, ShoppingCart, ChevronDown, Eye } from 'lucide-react';
 import { toast } from 'sonner';
-import { getPedidos, updatePedidoStatus, deletePedido } from '../services/api';
+import { getPedidos, patchPedidoStatus, deletePedido } from '../services/api';
 import type { Pedido } from '../types';
 import { StatusBadge } from '../components/ui/Badge';
 import { Modal, ConfirmModal } from '../components/ui/Modal';
 
 const statusOptions: { value: Pedido['status']; label: string }[] = [
-  { value: 'pendente', label: 'Pendente' },
-  { value: 'confirmado', label: 'Confirmado' },
-  { value: 'em_transito', label: 'Em Trânsito' },
-  { value: 'entregue', label: 'Entregue' },
-  { value: 'cancelado', label: 'Cancelado' },
+  { value: 'Pendente', label: 'Pendente' },
+  { value: 'Confirmado', label: 'Confirmado' },
+  { value: 'Em Rota', label: 'Em Rota' },
+  { value: 'Entregue', label: 'Entregue' },
+  { value: 'Cancelado', label: 'Cancelado' },
 ];
 
 export function OrdersPage() {
@@ -22,7 +22,7 @@ export function OrdersPage() {
   const [viewPedido, setViewPedido] = useState<Pedido | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Pedido | null>(null);
   const [deleting, setDeleting] = useState(false);
-  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<number | string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -35,13 +35,13 @@ export function OrdersPage() {
 
   const filtered = pedidos.filter(p => {
     const s = search.toLowerCase();
-    const matchSearch = !s || p.numero.toLowerCase().includes(s) || p.clienteNome.toLowerCase().includes(s);
+    const matchSearch = !s || String(p.id).toLowerCase().includes(s) || p.cliente_nome.toLowerCase().includes(s) || p.produto_nome.toLowerCase().includes(s);
     return matchSearch && (!statusFilter || p.status === statusFilter);
   });
 
-  const handleStatusChange = async (id: string, status: Pedido['status']) => {
+  const handleStatusChange = async (id: number | string, status: Pedido['status']) => {
     setUpdatingId(id);
-    const res = await updatePedidoStatus(id, status);
+    const res = await patchPedidoStatus(id, status);
     if (res.success) { toast.success('Status atualizado!'); load(); }
     else toast.error(res.error?.message);
     setUpdatingId(null);
@@ -56,8 +56,13 @@ export function OrdersPage() {
     setDeleting(false);
   };
 
-  const fmtDate = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('pt-BR');
-  const fmtPrice = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`;
+  const fmtDate = (d: string) => {
+    if (!d) return '-';
+    // Handle both YYYY-MM-DD and YYYY-MM-DD HH:MM:SS
+    const datePart = d.split(' ')[0];
+    return new Date(datePart + 'T12:00:00').toLocaleDateString('pt-BR');
+  };
+  const fmtPrice = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
   // Summary counts
   const counts = statusOptions.reduce((acc, s) => {
@@ -66,7 +71,7 @@ export function OrdersPage() {
   }, {} as Record<string, number>);
 
   const statusColors: Record<string, string> = {
-    pendente: '#FFD60A', confirmado: '#0A84FF', em_transito: '#8B5CF6', entregue: '#30D158', cancelado: '#FF453A'
+    Pendente: '#FFD60A', Confirmado: '#0A84FF', 'Em Rota': '#8B5CF6', Entregue: '#30D158', Cancelado: '#FF453A'
   };
 
   return (
@@ -143,16 +148,16 @@ export function OrdersPage() {
                     style={{ transition: 'background 0.15s' }}
                   >
                     <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#0A84FF', fontFamily: 'monospace' }}>{p.numero}</span>
+                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#0A84FF', fontFamily: 'monospace' }}>#{p.id}</span>
                     </td>
                     <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{p.clienteNome}</div>
-                      <div style={{ fontSize: '11px', color: '#8896A5' }}>{p.itens.length} item(ns)</div>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{p.cliente_nome}</div>
+                      <div style={{ fontSize: '11px', color: '#8896A5' }}>{p.produto_nome} (x{p.qtd})</div>
                     </td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{fmtDate(p.data)}</td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{fmtDate(p.prazoEntrega)}</td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', fontWeight: 700, color: '#0D1B2A' }}>{fmtPrice(p.total)}</td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}><StatusBadge status={p.status} /></td>
+                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{fmtDate(p.criado_em || '')}</td>
+                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{fmtDate(p.data_entrega)}</td>
+                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', fontWeight: 700, color: '#0D1B2A' }}>{fmtPrice(p.valor)}</td>
+                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}><StatusBadge status={p.status.toLowerCase()} /></td>
                     <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
                       <select
                         value={p.status}
@@ -179,14 +184,14 @@ export function OrdersPage() {
 
       {/* View Pedido Modal */}
       {viewPedido && (
-        <Modal open={!!viewPedido} onClose={() => setViewPedido(null)} title={`Pedido ${viewPedido.numero}`} maxWidth={520}>
+        <Modal open={!!viewPedido} onClose={() => setViewPedido(null)} title={`Pedido #${viewPedido.id}`} maxWidth={520}>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
               {[
-                { label: 'Cliente', value: viewPedido.clienteNome },
-                { label: 'Status', value: <StatusBadge status={viewPedido.status} /> },
-                { label: 'Data do Pedido', value: fmtDate(viewPedido.data) },
-                { label: 'Prazo de Entrega', value: fmtDate(viewPedido.prazoEntrega) },
+                { label: 'Cliente', value: viewPedido.cliente_nome },
+                { label: 'Status', value: <StatusBadge status={viewPedido.status.toLowerCase()} /> },
+                { label: 'Data do Pedido', value: fmtDate(viewPedido.criado_em || '') },
+                { label: 'Previsão de Entrega', value: fmtDate(viewPedido.data_entrega) },
               ].map((item, i) => (
                 <div key={i} style={{ background: '#F5F7FA', borderRadius: '10px', padding: '12px 14px' }}>
                   <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#8896A5', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '4px' }}>{item.label}</div>
@@ -197,27 +202,29 @@ export function OrdersPage() {
 
             <div style={{ background: '#F5F7FA', borderRadius: '10px', overflow: 'hidden' }}>
               <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDE3EE' }}>
-                <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.7px' }}>Itens do Pedido</span>
+                <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.7px' }}>Produto</span>
               </div>
-              {viewPedido.itens.map((item, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 14px', borderBottom: i < viewPedido.itens.length - 1 ? '1px solid #DDE3EE' : 'none' }}>
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{item.produtoNome}</div>
-                    <div style={{ fontSize: '11px', color: '#8896A5' }}>Qtd: {item.quantidade}</div>
-                  </div>
-                  <div style={{ fontSize: '13px', fontWeight: 700, color: '#0D1B2A' }}>{fmtPrice(item.quantidade * item.preco)}</div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: '#fff' }}>
+                <div>
+                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#0D1B2A' }}>{viewPedido.produto_nome}</div>
+                  <div style={{ fontSize: '12px', color: '#8896A5' }}>Quantidade: {viewPedido.qtd}</div>
                 </div>
-              ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 14px', borderTop: '2px solid #DDE3EE', background: '#fff' }}>
-                <span style={{ fontSize: '14px', fontWeight: 700, color: '#0D1B2A' }}>Total</span>
-                <span style={{ fontSize: '16px', fontWeight: 800, color: '#0A84FF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{fmtPrice(viewPedido.total)}</span>
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: '11px', color: '#8896A5', marginBottom: '2px' }}>Valor Total</div>
+                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#0A84FF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{fmtPrice(viewPedido.valor)}</div>
+                </div>
               </div>
+              {viewPedido.obs && (
+                <div style={{ padding: '12px 14px', borderTop: '1px solid #DDE3EE', fontSize: '12px', color: '#4A5568', background: '#FDFDFD' }}>
+                  <strong>Observação:</strong> {viewPedido.obs}
+                </div>
+              )}
             </div>
           </div>
         </Modal>
       )}
 
-      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} loading={deleting} title="Remover Pedido" message={`Tem certeza que deseja remover o pedido "${deleteTarget?.numero}"?`} confirmLabel="Remover Pedido" />
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} loading={deleting} title="Remover Pedido" message={`Tem certeza que deseja remover o pedido #${deleteTarget?.id}?`} confirmLabel="Remover Pedido" />
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }

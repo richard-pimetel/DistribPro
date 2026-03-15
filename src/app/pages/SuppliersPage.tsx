@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, Edit2, Trash2, Truck } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, Truck, Calendar, Mail, Phone, MapPin, User as UserIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { getFornecedores, createFornecedor, updateFornecedor, deleteFornecedor } from '../services/api';
 import type { Fornecedor } from '../types';
@@ -9,7 +9,19 @@ import { FormField, Input, Select } from '../components/ui/FormField';
 
 const estados = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const categorias = ['Eletrônicos', 'Periféricos', 'Áudio', 'Armazenamento', 'Acessórios', 'Componentes', 'Mobiliário', 'Outros'];
-const emptyForm: Omit<Fornecedor, 'id'> = { nome: '', email: '', telefone: '', cnpj: '', cidade: '', estado: 'SP', categoria: 'Eletrônicos', status: 'ativo', totalProdutos: 0, contato: '' };
+
+const emptyForm: Omit<Fornecedor, 'id' | 'criado_em' | 'atualizado_em'> = { 
+  nome: '', 
+  email: '', 
+  tel: '', 
+  cnpj: '', 
+  cidade: '', 
+  estado: 'SP', 
+  categoria: 'Eletrônicos', 
+  prazo: 15,
+  status: 'Ativo', 
+  contato: '' 
+};
 
 export function SuppliersPage() {
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
@@ -18,52 +30,108 @@ export function SuppliersPage() {
   const [catFilter, setCatFilter] = useState('');
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState<Fornecedor | null>(null);
-  const [form, setForm] = useState<Omit<Fornecedor, 'id'>>(emptyForm);
+  const [form, setForm] = useState<Omit<Fornecedor, 'id' | 'criado_em' | 'atualizado_em'>>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Fornecedor | null>(null);
   const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     setLoading(true);
-    const res = await getFornecedores();
-    if (res.success) setFornecedores(res.data!);
-    setLoading(false);
+    try {
+      const res = await getFornecedores();
+      if (res.success && res.data) {
+        setFornecedores(res.data);
+      } else {
+        toast.error(res.error?.message || 'Erro ao carregar fornecedores.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro de conexão.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, []);
 
   const filtered = fornecedores.filter(f => {
     const s = search.toLowerCase();
-    const matchSearch = !s || f.nome.toLowerCase().includes(s) || f.email.toLowerCase().includes(s) || f.contato.toLowerCase().includes(s);
+    const matchSearch = !s || 
+      f.nome.toLowerCase().includes(s) || 
+      f.email.toLowerCase().includes(s) || 
+      f.contato.toLowerCase().includes(s) ||
+      f.cnpj.toLowerCase().includes(s);
     return matchSearch && (!catFilter || f.categoria === catFilter);
   });
 
   const openCreate = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
-  const openEdit = (f: Fornecedor) => { setEditing(f); setForm({ nome: f.nome, email: f.email, telefone: f.telefone, cnpj: f.cnpj, cidade: f.cidade, estado: f.estado, categoria: f.categoria, status: f.status, totalProdutos: f.totalProdutos, contato: f.contato }); setShowModal(true); };
+  
+  const openEdit = (f: Fornecedor) => { 
+    setEditing(f); 
+    setForm({ 
+      nome: f.nome, 
+      email: f.email, 
+      tel: f.tel, 
+      cnpj: f.cnpj, 
+      cidade: f.cidade, 
+      estado: f.estado, 
+      categoria: f.categoria, 
+      prazo: f.prazo || 0,
+      status: f.status, 
+      contato: f.contato 
+    }); 
+    setShowModal(true); 
+  };
 
   const handleSave = async () => {
-    if (!form.nome || !form.email) { toast.error('Nome e e-mail são obrigatórios.'); return; }
+    if (!form.nome || !form.email) { 
+      toast.error('Razão Social e E-mail são obrigatórios.'); 
+      return; 
+    }
     setSaving(true);
     try {
       if (editing) {
         const res = await updateFornecedor(editing.id, form);
-        if (res.success) { toast.success('Fornecedor atualizado!'); load(); setShowModal(false); }
-        else toast.error(res.error?.message);
+        if (res.success) { 
+          toast.success('Fornecedor atualizado!'); 
+          load(); 
+          setShowModal(false); 
+        } else {
+          toast.error(res.error?.message || 'Erro ao atualizar fornecedor.');
+        }
       } else {
         const res = await createFornecedor(form);
-        if (res.success) { toast.success('Fornecedor cadastrado!'); load(); setShowModal(false); }
-        else toast.error(res.error?.message);
+        if (res.success) { 
+          toast.success('Fornecedor cadastrado!'); 
+          load(); 
+          setShowModal(false); 
+        } else {
+          toast.error(res.error?.message || 'Erro ao criar fornecedor.');
+        }
       }
-    } finally { setSaving(false); }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro ao processar requisição.');
+    } finally { 
+      setSaving(false); 
+    }
   };
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
-    const res = await deleteFornecedor(deleteTarget.id);
-    if (res.success) { toast.success('Fornecedor removido.'); load(); setDeleteTarget(null); }
-    else toast.error(res.error?.message);
-    setDeleting(false);
+    try {
+      const res = await deleteFornecedor(deleteTarget.id);
+      if (res.success) { 
+        toast.success('Fornecedor removido.'); 
+        load(); 
+        setDeleteTarget(null); 
+      } else {
+        toast.error(res.error?.message || 'Erro ao remover fornecedor.');
+      }
+    } catch (err: any) {
+      toast.error(err.message || 'Erro de conexão.');
+    } finally {
+      setDeleting(false);
+    }
   };
 
   const iconColors = ['#0A84FF', '#30D158', '#FF6B35', '#8B5CF6', '#FF453A'];
@@ -73,7 +141,7 @@ export function SuppliersPage() {
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
           <h1 style={{ fontSize: '22px', fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#0D1B2A', margin: '0 0 4px' }}>Fornecedores</h1>
-          <p style={{ fontSize: '13px', color: '#8896A5', margin: 0 }}>{fornecedores.length} fornecedores · {fornecedores.filter(f => f.status === 'ativo').length} ativos</p>
+          <p style={{ fontSize: '13px', color: '#8896A5', margin: 0 }}>{fornecedores.length} fornecedores · {fornecedores.filter(f => f.status === 'Ativo').length} ativos</p>
         </div>
         <button onClick={openCreate} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 18px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #0A84FF, #0060CC)', color: '#fff', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif", boxShadow: '0 4px 14px rgba(10,132,255,0.3)' }}>
           <Plus size={16} /> Novo Fornecedor
@@ -92,7 +160,6 @@ export function SuppliersPage() {
         <span style={{ fontSize: '12px', color: '#8896A5', marginLeft: 'auto' }}>{filtered.length} resultado(s)</span>
       </div>
 
-      {/* Cards layout */}
       {loading ? (
         <div style={{ padding: '60px', textAlign: 'center' }}>
           <div style={{ width: '28px', height: '28px', border: '3px solid #DDE3EE', borderTopColor: '#0A84FF', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
@@ -122,27 +189,35 @@ export function SuppliersPage() {
                       <div style={{ fontSize: '11px', color: '#8896A5' }}>{f.cnpj}</div>
                     </div>
                   </div>
-                  <StatusBadge status={f.status} />
+                  <StatusBadge status={f.status.toLowerCase() as any} />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '14px' }}>
-                  {[
-                    { label: 'E-mail', value: f.email },
-                    { label: 'Telefone', value: f.telefone },
-                    { label: 'Localização', value: `${f.cidade}/${f.estado}` },
-                    { label: 'Contato', value: f.contato },
-                  ].map((item, i) => (
-                    <div key={i}>
-                      <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#8896A5', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '2px' }}>{item.label}</div>
-                      <div style={{ fontSize: '12.5px', color: '#0D1B2A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.value}</div>
-                    </div>
-                  ))}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', marginBottom: '16px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Mail size={14} color="#8896A5" />
+                    <span style={{ fontSize: '12px', color: '#4A5568', overflow: 'hidden', textOverflow: 'ellipsis' }}>{f.email}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Phone size={14} color="#8896A5" />
+                    <span style={{ fontSize: '12px', color: '#4A5568' }}>{f.tel}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <MapPin size={14} color="#8896A5" />
+                    <span style={{ fontSize: '12px', color: '#4A5568' }}>{f.cidade}/{f.estado}</span>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <UserIcon size={14} color="#8896A5" />
+                    <span style={{ fontSize: '12px', color: '#4A5568' }}>{f.contato}</span>
+                  </div>
                 </div>
 
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '12px', borderTop: '1px solid #F5F7FA' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <Badge variant="neutral">{f.categoria}</Badge>
-                    <span style={{ fontSize: '12px', color: '#8896A5' }}>{f.totalProdutos} produtos</span>
+                    <Badge variant="info">{f.categoria}</Badge>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '12px', color: '#8896A5' }}>
+                      <Calendar size={12} />
+                      <span>{f.prazo} dias</span>
+                    </div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
                     <button onClick={() => openEdit(f)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0A84FF' }}><Edit2 size={13} /></button>
@@ -169,14 +244,14 @@ export function SuppliersPage() {
           <FormField label="Razão Social" fullWidth required>
             <Input value={form.nome} onChange={e => setForm(f => ({ ...f, nome: e.target.value }))} placeholder="Nome da empresa" />
           </FormField>
-          <FormField label="CNPJ">
+          <FormField label="CNPJ" required>
             <Input value={form.cnpj} onChange={e => setForm(f => ({ ...f, cnpj: e.target.value }))} placeholder="00.000.000/0001-00" />
           </FormField>
           <FormField label="E-mail" required>
             <Input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} placeholder="email@fornecedor.com" />
           </FormField>
           <FormField label="Telefone">
-            <Input value={form.telefone} onChange={e => setForm(f => ({ ...f, telefone: e.target.value }))} placeholder="(11) 9999-9999" />
+            <Input value={form.tel} onChange={e => setForm(f => ({ ...f, tel: e.target.value }))} placeholder="(11) 9999-9999" />
           </FormField>
           <FormField label="Nome do Contato">
             <Input value={form.contato} onChange={e => setForm(f => ({ ...f, contato: e.target.value }))} placeholder="Responsável comercial" />
@@ -184,6 +259,15 @@ export function SuppliersPage() {
           <FormField label="Categoria">
             <Select value={form.categoria} onChange={e => setForm(f => ({ ...f, categoria: e.target.value }))}>
               {categorias.map(c => <option key={c} value={c}>{c}</option>)}
+            </Select>
+          </FormField>
+          <FormField label="Pagamento (Prazo em dias)">
+            <Input type="number" value={form.prazo} onChange={e => setForm(f => ({ ...f, prazo: Number(e.target.value) }))} min={0} />
+          </FormField>
+          <FormField label="Status">
+            <Select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))}>
+              <option value="Ativo">Ativo</option>
+              <option value="Inativo">Inativo</option>
             </Select>
           </FormField>
           <FormField label="Cidade">
@@ -194,16 +278,10 @@ export function SuppliersPage() {
               {estados.map(e => <option key={e} value={e}>{e}</option>)}
             </Select>
           </FormField>
-          <FormField label="Status">
-            <Select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))}>
-              <option value="ativo">Ativo</option>
-              <option value="inativo">Inativo</option>
-            </Select>
-          </FormField>
         </div>
       </Modal>
 
-      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} loading={deleting} title="Remover Fornecedor" message={`Tem certeza que deseja remover o fornecedor "${deleteTarget?.nome}"?`} confirmLabel="Remover" />
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} loading={deleting} title="Remover Fornecedor" message={`Tem certeza que deseja remover o fornecedor "${deleteTarget?.nome}"? Esta ação não pode ser desfeita.`} confirmLabel="Remover" />
 
       <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>

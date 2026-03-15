@@ -45,36 +45,35 @@ export interface Cliente {
 }
 
 export interface Fornecedor {
-  id: string;
+  id: number | string;
   nome: string;
   email: string;
-  telefone: string;
+  tel: string;
   cnpj: string;
   cidade: string;
   estado: string;
   categoria: string;
-  status: 'ativo' | 'inativo';
-  totalProdutos: number;
+  prazo: number;
+  status: 'Ativo' | 'Inativo';
   contato: string;
-}
-
-export interface PedidoItem {
-  produtoId: string;
-  produtoNome: string;
-  quantidade: number;
-  preco: number;
+  criado_em?: string;
+  atualizado_em?: string;
 }
 
 export interface Pedido {
-  id: string;
-  numero: string;
-  clienteId: string;
-  clienteNome: string;
-  data: string;
-  prazoEntrega: string;
-  status: 'pendente' | 'confirmado' | 'em_transito' | 'entregue' | 'cancelado';
-  total: number;
-  itens: PedidoItem[];
+  id: number | string;
+  cliente_id: number;
+  cliente_nome: string;
+  produto_id: number;
+  produto_nome: string;
+  qtd: number;
+  valor: number;
+  destino: string;
+  data_entrega: string;
+  status: 'Pendente' | 'Confirmado' | 'Em Rota' | 'Entregue' | 'Cancelado';
+  obs?: string;
+  criado_em?: string;
+  atualizado_em?: string;
 }
 
 export interface KPIs {

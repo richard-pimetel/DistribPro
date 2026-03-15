@@ -4,8 +4,8 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Target, AlertTriangle, Package, RefreshCw } from 'lucide-react';
-import { getDashboardKPIs, getDashboardEntregas, getDashboardStatus, getProdutosEstoqueBaixo, getClientes } from '../services/api';
-import type { KPIs, EntregaData, StatusPedidoData, Produto } from '../types';
+import { getDashboardKPIs, getDashboardEntregas, getDashboardStatus, getProdutosEstoqueBaixo, getClientes, getFornecedores, getPedidosRecentes } from '../services/api';
+import type { KPIs, EntregaData, StatusPedidoData, Produto, Pedido } from '../types';
 import { StatusBadge } from '../components/ui/Badge';
 import { useAuth } from '../context/AuthContext';
 
@@ -64,25 +64,33 @@ export function DashboardPage() {
   const [statusData, setStatusData] = useState<StatusPedidoData[]>([]);
   const [estoqueBaixo, setEstoqueBaixo] = useState<Produto[]>([]);
   const [totalClientes, setTotalClientes] = useState(0);
+  const [totalFornecedores, setTotalFornecedores] = useState(0);
+  const [pedidosRecentes, setPedidosRecentes] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
   const [periodo, setPeriodo] = useState(7);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [kRes, eRes, sRes, ebRes, cRes] = await Promise.all([
+      const results = await Promise.all([
         getDashboardKPIs(), 
         getDashboardEntregas(periodo), 
         getDashboardStatus(), 
         getProdutosEstoqueBaixo(),
-        getClientes()
+        getClientes(),
+        getFornecedores(),
+        getPedidosRecentes()
       ]);
+      
+      const [kRes, eRes, sRes, ebRes, cRes, fRes, prRes] = results;
       
       if (kRes.success) setKpis(kRes.data!);
       if (eRes.success) setEntregas(eRes.data!);
       if (sRes.success) setStatusData(sRes.data!);
       if (ebRes.success) setEstoqueBaixo(ebRes.data!);
       if (cRes.success && cRes.data) setTotalClientes(cRes.data.length);
+      if (fRes.success && fRes.data) setTotalFornecedores(fRes.data.length);
+      if (prRes.success && prRes.data) setPedidosRecentes(prRes.data);
       
     } catch (err) {
       console.error('Erro ao carregar dados do dashboard:', err);
@@ -151,11 +159,12 @@ export function DashboardPage() {
 
       {/* KPI Cards */}
       {kpis && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '18px', marginBottom: '28px' }} className="stats-grid">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '18px', marginBottom: '28px' }} className="stats-grid">
           <StatCard label="Receita do Mês" value={fmt(kpis.receita)} change={kpis.receitaVariacao} icon={<DollarSign size={20} />} color="#0A84FF" />
           <StatCard label="Pedidos" value={fmtNum(kpis.pedidos)} change={kpis.pedidosVariacao} icon={<ShoppingCart size={20} />} color="#30D158" />
-          <StatCard label="Total Clientes" value={fmtNum(totalClientes || kpis.clientes)} change={kpis.clientesVariacao} icon={<Users size={20} />} color="#FF6B35" />
-          <StatCard label="Ticket Médio" value={`R$ ${fmtNum(kpis.ticketMedio)}`} change={kpis.ticketMedioVariacao} icon={<Target size={20} />} color="#8B5CF6" />
+          <StatCard label="Clientes" value={fmtNum(totalClientes || kpis.clientes)} change={kpis.clientesVariacao} icon={<Users size={20} />} color="#FF6B35" />
+          <StatCard label="Fornecedores" value={fmtNum(totalFornecedores)} change={0} icon={<Package size={20} />} color="#8B5CF6" />
+          <StatCard label="Ticket Médio" value={`R$ ${fmtNum(kpis.ticketMedio)}`} change={kpis.ticketMedioVariacao} icon={<Target size={20} />} color="#FFD60A" />
         </div>
       )}
 
@@ -271,31 +280,34 @@ export function DashboardPage() {
             <p style={{ fontSize: '11px', color: '#8896A5', margin: 0 }}>Últimas movimentações</p>
           </div>
           <div>
-            {[...Array(5)].map((_, i) => {
-              const statuses = ['em_transito', 'confirmado', 'pendente', 'entregue', 'cancelado'] as const;
-              const clients = ['Alpha Tecnologia', 'Beta Soluções', 'Gamma Distribuidora', 'Eta Sistemas', 'Epsilon Tech'];
-              const values = [12498, 7896, 3148, 5996, 2498];
-              return (
-                <div key={i} style={{ padding: '12px 24px', borderBottom: i < 4 ? '1px solid #F5F7FA' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                  <div>
-                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>#{String(1248 - i).padStart(6, '0')}</div>
-                    <div style={{ fontSize: '11px', color: '#8896A5', marginTop: '2px' }}>{clients[i]}</div>
-                  </div>
-                  <div style={{ textAlign: 'right' }}>
-                    <StatusBadge status={statuses[i]} />
-                    <div style={{ fontSize: '12px', fontWeight: 700, color: '#0D1B2A', marginTop: '4px' }}>
-                      R$ {values[i].toLocaleString('pt-BR')}
-                    </div>
+            {pedidosRecentes.map((p, i) => (
+              <div key={p.id} style={{ padding: '12px 24px', borderBottom: i < pedidosRecentes.length - 1 ? '1px solid #F5F7FA' : 'none', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>#{p.id}</div>
+                  <div style={{ fontSize: '11px', color: '#8896A5', marginTop: '2px' }}>{p.cliente_nome}</div>
+                </div>
+                <div style={{ textAlign: 'right' }}>
+                  <StatusBadge status={p.status.toLowerCase()} />
+                  <div style={{ fontSize: '12px', fontWeight: 700, color: '#0D1B2A', marginTop: '4px' }}>
+                    R$ {p.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </div>
                 </div>
-              );
-            })}
+              </div>
+            ))}
+            {pedidosRecentes.length === 0 && (
+              <div style={{ padding: '32px', textAlign: 'center', color: '#8896A5', fontSize: '13px' }}>
+                Nenhum pedido recente.
+              </div>
+            )}
           </div>
         </div>
       </div>
 
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
+        @media (max-width: 1400px) {
+          .stats-grid { grid-template-columns: repeat(3, 1fr) !important; }
+        }
         @media (max-width: 1200px) {
           .stats-grid { grid-template-columns: repeat(2,1fr) !important; }
           .charts-grid { grid-template-columns: 1fr !important; }

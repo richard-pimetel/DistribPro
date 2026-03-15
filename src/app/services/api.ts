@@ -77,66 +77,57 @@ export const deleteCliente = async (id: number | string): Promise<ApiResponse<nu
   return httpClient.del<ApiResponse<null>>(`/clientes/${id}`);
 };
 
-// ── FORNECEDORES ──────────────────────────────────────────
-let fornecedores = [...mockFornecedores];
-
+// ── FORNECEDORES (real API) ───────────────────────────
 export const getFornecedores = async (): Promise<ApiResponse<Fornecedor[]>> => {
-  await delay(400);
-  return { success: true, data: [...fornecedores] };
+  return httpClient.get<ApiResponse<Fornecedor[]>>('/fornecedores');
 };
 
-export const createFornecedor = async (data: Omit<Fornecedor, 'id'>): Promise<ApiResponse<Fornecedor>> => {
-  await delay(500);
-  const novo = { ...data, id: `f${Date.now()}` };
-  fornecedores = [novo, ...fornecedores];
-  return { success: true, data: novo };
+export const getFornecedorById = async (id: number | string): Promise<ApiResponse<Fornecedor>> => {
+  return httpClient.get<ApiResponse<Fornecedor>>(`/fornecedores/${id}`);
 };
 
-export const updateFornecedor = async (id: string, data: Partial<Fornecedor>): Promise<ApiResponse<Fornecedor>> => {
-  await delay(500);
-  fornecedores = fornecedores.map(f => f.id === id ? { ...f, ...data } : f);
-  const updated = fornecedores.find(f => f.id === id)!;
-  return { success: true, data: updated };
+export const createFornecedor = async (data: Omit<Fornecedor, 'id' | 'criado_em' | 'atualizado_em'>): Promise<ApiResponse<Fornecedor>> => {
+  return httpClient.post<ApiResponse<Fornecedor>>('/fornecedores', data);
 };
 
-export const deleteFornecedor = async (id: string): Promise<ApiResponse<null>> => {
-  await delay(400);
-  fornecedores = fornecedores.filter(f => f.id !== id);
-  return { success: true, data: null };
+export const updateFornecedor = async (id: number | string, data: Partial<Fornecedor>): Promise<ApiResponse<Fornecedor>> => {
+  return httpClient.put<ApiResponse<Fornecedor>>(`/fornecedores/${id}`, data);
 };
 
-// ── PEDIDOS ───────────────────────────────────────────────
-let pedidos = [...mockPedidos];
+export const deleteFornecedor = async (id: number | string): Promise<ApiResponse<null>> => {
+  return httpClient.del<ApiResponse<null>>(`/fornecedores/${id}`);
+};
 
+// ── PEDIDOS (real API) ──────────────────────────────────
 export const getPedidos = async (): Promise<ApiResponse<Pedido[]>> => {
-  await delay(400);
-  return { success: true, data: [...pedidos] };
+  return httpClient.get<ApiResponse<Pedido[]>>('/pedidos');
 };
 
 export const getPedidosRecentes = async (): Promise<ApiResponse<Pedido[]>> => {
-  await delay(300);
-  return { success: true, data: pedidos.slice(0, 5) };
+  return httpClient.get<ApiResponse<Pedido[]>>('/pedidos/recentes');
 };
 
-export const createPedido = async (data: Omit<Pedido, 'id'>): Promise<ApiResponse<Pedido>> => {
-  await delay(600);
-  const novo = { ...data, id: `o${Date.now()}` };
-  pedidos = [novo, ...pedidos];
-  return { success: true, data: novo };
+export const getPedidoById = async (id: number | string): Promise<ApiResponse<Pedido>> => {
+  return httpClient.get<ApiResponse<Pedido>>(`/pedidos/${id}`);
 };
 
-export const updatePedidoStatus = async (id: string, status: Pedido['status']): Promise<ApiResponse<Pedido>> => {
-  await delay(400);
-  pedidos = pedidos.map(p => p.id === id ? { ...p, status } : p);
-  const updated = pedidos.find(p => p.id === id)!;
-  return { success: true, data: updated };
+export const createPedido = async (data: any): Promise<ApiResponse<Pedido>> => {
+  return httpClient.post<ApiResponse<Pedido>>('/pedidos', data);
 };
 
-export const deletePedido = async (id: string): Promise<ApiResponse<null>> => {
-  await delay(400);
-  pedidos = pedidos.filter(p => p.id !== id);
-  return { success: true, data: null };
+export const updatePedido = async (id: number | string, data: any): Promise<ApiResponse<Pedido>> => {
+  return httpClient.put<ApiResponse<Pedido>>(`/pedidos/${id}`, data);
 };
+
+export const patchPedidoStatus = async (id: number | string, status: string): Promise<ApiResponse<Pedido>> => {
+  return httpClient.patch<ApiResponse<Pedido>>(`/pedidos/${id}/status`, { status });
+};
+
+export const deletePedido = async (id: number | string): Promise<ApiResponse<null>> => {
+  return httpClient.del<ApiResponse<null>>(`/pedidos/${id}`);
+};
+
+export const updatePedidoStatus = patchPedidoStatus;
 
 // ── CONFIG ────────────────────────────────────────────────
 let config = { ...mockConfig };
