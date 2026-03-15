@@ -4,7 +4,7 @@ import {
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts';
 import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Target, AlertTriangle, Package, RefreshCw } from 'lucide-react';
-import { getDashboardKPIs, getDashboardEntregas, getDashboardStatus, getProdutosEstoqueBaixo } from '../services/api';
+import { getDashboardKPIs, getDashboardEntregas, getDashboardStatus, getProdutosEstoqueBaixo, getClientes } from '../services/api';
 import type { KPIs, EntregaData, StatusPedidoData, Produto } from '../types';
 import { StatusBadge } from '../components/ui/Badge';
 import { useAuth } from '../context/AuthContext';
@@ -57,26 +57,38 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   }
   return null;
 };
-
 export function DashboardPage() {
   const { user } = useAuth();
   const [kpis, setKpis] = useState<KPIs | null>(null);
   const [entregas, setEntregas] = useState<EntregaData[]>([]);
   const [statusData, setStatusData] = useState<StatusPedidoData[]>([]);
   const [estoqueBaixo, setEstoqueBaixo] = useState<Produto[]>([]);
+  const [totalClientes, setTotalClientes] = useState(0);
   const [loading, setLoading] = useState(true);
   const [periodo, setPeriodo] = useState(7);
 
   const load = async () => {
     setLoading(true);
-    const [kRes, eRes, sRes, ebRes] = await Promise.all([
-      getDashboardKPIs(), getDashboardEntregas(periodo), getDashboardStatus(), getProdutosEstoqueBaixo()
-    ]);
-    if (kRes.success) setKpis(kRes.data!);
-    if (eRes.success) setEntregas(eRes.data!);
-    if (sRes.success) setStatusData(sRes.data!);
-    if (ebRes.success) setEstoqueBaixo(ebRes.data!);
-    setLoading(false);
+    try {
+      const [kRes, eRes, sRes, ebRes, cRes] = await Promise.all([
+        getDashboardKPIs(), 
+        getDashboardEntregas(periodo), 
+        getDashboardStatus(), 
+        getProdutosEstoqueBaixo(),
+        getClientes()
+      ]);
+      
+      if (kRes.success) setKpis(kRes.data!);
+      if (eRes.success) setEntregas(eRes.data!);
+      if (sRes.success) setStatusData(sRes.data!);
+      if (ebRes.success) setEstoqueBaixo(ebRes.data!);
+      if (cRes.success && cRes.data) setTotalClientes(cRes.data.length);
+      
+    } catch (err) {
+      console.error('Erro ao carregar dados do dashboard:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => { load(); }, [periodo]);
@@ -142,7 +154,7 @@ export function DashboardPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '18px', marginBottom: '28px' }} className="stats-grid">
           <StatCard label="Receita do Mês" value={fmt(kpis.receita)} change={kpis.receitaVariacao} icon={<DollarSign size={20} />} color="#0A84FF" />
           <StatCard label="Pedidos" value={fmtNum(kpis.pedidos)} change={kpis.pedidosVariacao} icon={<ShoppingCart size={20} />} color="#30D158" />
-          <StatCard label="Novos Clientes" value={fmtNum(kpis.clientes)} change={kpis.clientesVariacao} icon={<Users size={20} />} color="#FF6B35" />
+          <StatCard label="Total Clientes" value={fmtNum(totalClientes || kpis.clientes)} change={kpis.clientesVariacao} icon={<Users size={20} />} color="#FF6B35" />
           <StatCard label="Ticket Médio" value={`R$ ${fmtNum(kpis.ticketMedio)}`} change={kpis.ticketMedioVariacao} icon={<Target size={20} />} color="#8B5CF6" />
         </div>
       )}
@@ -238,13 +250,13 @@ export function DashboardPage() {
                   </div>
                   <div>
                     <div style={{ fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{p.nome}</div>
-                    <div style={{ fontSize: '11px', color: '#8896A5' }}>{p.sku} · Mín: {p.estoqueMinimo}</div>
+                    <div style={{ fontSize: '11px', color: '#8896A5' }}>{p.sku} · Mín: {p.estoque_min}</div>
                   </div>
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div style={{ fontSize: '13px', fontWeight: 700, color: p.estoque === 0 ? '#FF453A' : '#A07800' }}>{p.estoque} un.</div>
                   <div style={{ width: '60px', height: '4px', background: '#F0F3F8', borderRadius: '99px', marginTop: '4px', overflow: 'hidden' }}>
-                    <div style={{ height: '100%', width: `${Math.min(100, (p.estoque / p.estoqueMinimo) * 100)}%`, background: p.estoque <= p.estoqueMinimo * 0.3 ? '#FF453A' : '#FFD60A', borderRadius: '99px' }} />
+                    <div style={{ height: '100%', width: `${Math.min(100, (p.estoque / (p.estoque_min || 1)) * 100)}%`, background: p.estoque <= (p.estoque_min || 1) * 0.3 ? '#FF453A' : '#FFD60A', borderRadius: '99px' }} />
                   </div>
                 </div>
               </div>

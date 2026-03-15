@@ -7,31 +7,41 @@ export interface User {
 }
 
 export interface Produto {
-  id: string;
+  id: number | string;
   nome: string;
   sku: string;
   categoria: string;
+  unidade: string;
   preco: number;
-  custo: number;
   estoque: number;
-  estoqueMinimo: number;
-  fornecedor: string;
-  status: 'ativo' | 'inativo';
+  estoque_min: number;
+  fornecedor_id: number;
+  status: 'Ativo' | 'Inativo';
   descricao?: string;
+  criado_em?: string;
+  atualizado_em?: string;
+  // Optional field kept for compatibility if needed, but not in main backend docs
+  custo?: number;
+  fornecedor?: string; // Kept for UI display convenience if mapped from ID
 }
 
 export interface Cliente {
-  id: string;
+  id: number | string;
   nome: string;
+  tipo: 'PF' | 'PJ';
+  doc: string;
   email: string;
-  telefone: string;
-  cpfCnpj: string;
+  tel: string;
   cidade: string;
   estado: string;
-  status: 'ativo' | 'inativo';
-  totalPedidos: number;
-  totalGasto: number;
-  ultimaCompra: string;
+  limite: number;
+  status: 'Ativo' | 'Inativo';
+  criado_em?: string;
+  atualizado_em?: string;
+  // Optional fields kept for UI compatibility if needed
+  totalPedidos?: number;
+  totalGasto?: number;
+  ultimaCompra?: string;
 }
 
 export interface Fornecedor {

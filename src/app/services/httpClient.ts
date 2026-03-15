@@ -81,7 +81,16 @@ export const httpClient = {
     return handleResponse<T>(response, endpoint);
   },
 
-  async delete<T>(endpoint: string): Promise<T> {
+  async patch<T>(endpoint: string, body?: unknown): Promise<T> {
+    const response = await fetch(`${BASE_URL}${endpoint}`, {
+      method: 'PATCH',
+      headers: buildHeaders(!!body),
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    return handleResponse<T>(response, endpoint);
+  },
+
+  async del<T>(endpoint: string): Promise<T> {
     const response = await fetch(`${BASE_URL}${endpoint}`, {
       method: 'DELETE',
       headers: buildHeaders(),

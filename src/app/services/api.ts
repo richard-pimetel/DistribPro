@@ -1,4 +1,5 @@
 import type { ApiResponse, Produto, Cliente, Fornecedor, Pedido, KPIs, EntregaData, StatusPedidoData, Config } from '../types';
+import { httpClient } from './httpClient';
 import {
   mockKPIs, mockEntregas, mockStatusPedidos,
   mockProdutos, mockClientes, mockFornecedores,
@@ -26,65 +27,54 @@ export const getDashboardStatus = async (): Promise<ApiResponse<StatusPedidoData
   return { success: true, data: mockStatusPedidos };
 };
 
-// ── PRODUTOS ──────────────────────────────────────────────
-let produtos = [...mockProdutos];
-
+// ── PRODUTOS (real API) ──────────────────────────────────
 export const getProdutos = async (): Promise<ApiResponse<Produto[]>> => {
-  await delay(400);
-  return { success: true, data: [...produtos] };
+  return httpClient.get<ApiResponse<Produto[]>>('/produtos');
+};
+
+export const getProdutoById = async (id: number | string): Promise<ApiResponse<Produto>> => {
+  return httpClient.get<ApiResponse<Produto>>(`/produtos/${id}`);
 };
 
 export const getProdutosEstoqueBaixo = async (): Promise<ApiResponse<Produto[]>> => {
-  await delay(300);
-  return { success: true, data: produtos.filter(p => p.estoque <= p.estoqueMinimo) };
+  return httpClient.get<ApiResponse<Produto[]>>('/produtos/estoque-baixo');
 };
 
-export const createProduto = async (data: Omit<Produto, 'id'>): Promise<ApiResponse<Produto>> => {
-  await delay(500);
-  const novo = { ...data, id: `p${Date.now()}` };
-  produtos = [novo, ...produtos];
-  return { success: true, data: novo };
+export const createProduto = async (data: Omit<Produto, 'id' | 'criado_em' | 'atualizado_em'>): Promise<ApiResponse<Produto>> => {
+  return httpClient.post<ApiResponse<Produto>>('/produtos', data);
 };
 
-export const updateProduto = async (id: string, data: Partial<Produto>): Promise<ApiResponse<Produto>> => {
-  await delay(500);
-  produtos = produtos.map(p => p.id === id ? { ...p, ...data } : p);
-  const updated = produtos.find(p => p.id === id)!;
-  return { success: true, data: updated };
+export const updateProduto = async (id: number | string, data: Partial<Produto>): Promise<ApiResponse<Produto>> => {
+  return httpClient.put<ApiResponse<Produto>>(`/produtos/${id}`, data);
 };
 
-export const deleteProduto = async (id: string): Promise<ApiResponse<null>> => {
-  await delay(400);
-  produtos = produtos.filter(p => p.id !== id);
-  return { success: true, data: null };
+export const patchProduto = async (id: number | string, data: Partial<Produto>): Promise<ApiResponse<Produto>> => {
+  return httpClient.patch<ApiResponse<Produto>>(`/produtos/${id}`, data);
 };
 
-// ── CLIENTES ──────────────────────────────────────────────
-let clientes = [...mockClientes];
+export const deleteProduto = async (id: number | string): Promise<ApiResponse<null>> => {
+  return httpClient.del<ApiResponse<null>>(`/produtos/${id}`);
+};
 
+// ── CLIENTES (real API) ──────────────────────────────────
 export const getClientes = async (): Promise<ApiResponse<Cliente[]>> => {
-  await delay(400);
-  return { success: true, data: [...clientes] };
+  return httpClient.get<ApiResponse<Cliente[]>>('/clientes');
 };
 
-export const createCliente = async (data: Omit<Cliente, 'id'>): Promise<ApiResponse<Cliente>> => {
-  await delay(500);
-  const novo = { ...data, id: `c${Date.now()}` };
-  clientes = [novo, ...clientes];
-  return { success: true, data: novo };
+export const getClienteById = async (id: number | string): Promise<ApiResponse<Cliente>> => {
+  return httpClient.get<ApiResponse<Cliente>>(`/clientes/${id}`);
 };
 
-export const updateCliente = async (id: string, data: Partial<Cliente>): Promise<ApiResponse<Cliente>> => {
-  await delay(500);
-  clientes = clientes.map(c => c.id === id ? { ...c, ...data } : c);
-  const updated = clientes.find(c => c.id === id)!;
-  return { success: true, data: updated };
+export const createCliente = async (data: Omit<Cliente, 'id' | 'criado_em' | 'atualizado_em'>): Promise<ApiResponse<Cliente>> => {
+  return httpClient.post<ApiResponse<Cliente>>('/clientes', data);
 };
 
-export const deleteCliente = async (id: string): Promise<ApiResponse<null>> => {
-  await delay(400);
-  clientes = clientes.filter(c => c.id !== id);
-  return { success: true, data: null };
+export const updateCliente = async (id: number | string, data: Partial<Cliente>): Promise<ApiResponse<Cliente>> => {
+  return httpClient.put<ApiResponse<Cliente>>(`/clientes/${id}`, data);
+};
+
+export const deleteCliente = async (id: number | string): Promise<ApiResponse<null>> => {
+  return httpClient.del<ApiResponse<null>>(`/clientes/${id}`);
 };
 
 // ── FORNECEDORES ──────────────────────────────────────────
