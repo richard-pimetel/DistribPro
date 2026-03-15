@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { Plus, Search, Trash2, ShoppingCart, ChevronDown, Eye } from 'lucide-react';
+import { Plus, Search, Trash2, ShoppingCart, ChevronDown, Eye, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { getPedidos, patchPedidoStatus, deletePedido } from '../services/api';
-import type { Pedido } from '../types';
+import { getPedidos, patchPedidoStatus, deletePedido, getProdutos, createPedido } from '../services/api';
+import { useAuth } from '../context/AuthContext';
+import type { Pedido, Produto } from '../types';
 import { StatusBadge } from '../components/ui/Badge';
 import { Modal, ConfirmModal } from '../components/ui/Modal';
+import { FormField, Input, Select } from '../components/ui/FormField';
 
 const statusOptions: { value: Pedido['status']; label: string }[] = [
   { value: 'Pendente', label: 'Pendente' },
@@ -15,27 +17,77 @@ const statusOptions: { value: Pedido['status']; label: string }[] = [
 ];
 
 export function OrdersPage() {
+  const { user } = useAuth();
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [produtos, setProdutos] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [viewPedido, setViewPedido] = useState<Pedido | null>(null);
+  const [showCreateModal, setShowCreateModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Pedido | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [updatingId, setUpdatingId] = useState<number | string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // New Pedido Form
+  const [form, setForm] = useState({
+    produto_id: '',
+    qtd: 1,
+    destino: '',
+    data_entrega: '',
+    obs: ''
+  });
+
+  const isCliente = user?.role === 'cliente';
 
   const load = async () => {
     setLoading(true);
-    const res = await getPedidos();
-    if (res.success) setPedidos(res.data!);
-    setLoading(false);
+    try {
+      const [resPed, resProd] = await Promise.all([
+        getPedidos(),
+        getProdutos()
+      ]);
+      
+      if (resPed.success) {
+        // If client, we should only see our own orders. 
+        // Note: Ideally the backend filters this, but we'll safeguard here.
+        const allPedidos = resPed.data || [];
+        if (isCliente) {
+          const targetId = user?.clienteId || user?.id;
+          setPedidos(allPedidos.filter(p => {
+            const cid = p.cliente_id || (p as any).clienteId;
+            return String(cid) === String(targetId);
+          }));
+        } else {
+          setPedidos(allPedidos);
+        }
+      }
+      if (resProd.success) setProdutos(resProd.data || []);
+    } catch (err) {
+      toast.error('Erro ao carregar dados.');
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { 
+    load(); 
+    
+    // Auto-refresh every 30 seconds to keep data synchronized
+    const interval = setInterval(() => {
+      load();
+    }, 30000);
+
+    return () => clearInterval(interval);
+  }, [user?.id]);
 
   const filtered = pedidos.filter(p => {
     const s = search.toLowerCase();
-    const matchSearch = !s || String(p.id).toLowerCase().includes(s) || p.cliente_nome.toLowerCase().includes(s) || p.produto_nome.toLowerCase().includes(s);
+    const matchSearch = !s || 
+      String(p.id).toLowerCase().includes(s) || 
+      (p.cliente_nome || '').toLowerCase().includes(s) || 
+      (p.produto_nome || '').toLowerCase().includes(s);
     return matchSearch && (!statusFilter || p.status === statusFilter);
   });
 
@@ -56,19 +108,69 @@ export function OrdersPage() {
     setDeleting(false);
   };
 
+  const handleCreatePedido = async () => {
+    if (!form.produto_id || !form.qtd || !form.destino || !form.data_entrega) {
+      toast.error('Preencha os campos obrigatórios.');
+      return;
+    }
+    setSaving(true);
+    try {
+      const selectedProd = produtos.find(p => String(p.id) === String(form.produto_id));
+      
+      if (selectedProd?.status === 'Inativo') {
+        toast.error('Este produto/serviço está temporariamente indisponível.');
+        return;
+      }
+
+      const targetClientId = user?.clienteId || user?.id;
+      const payload = {
+        // Primary camelCase format
+        clienteId: Number(targetClientId),
+        // Secondary snake_case format
+        cliente_id: Number(targetClientId),
+        
+        destino: form.destino || 'Não informado',
+        data_entrega: form.data_entrega,
+        obs: form.obs || '',
+        
+        itens: [
+          {
+            produtoId: Number(form.produto_id),
+            produto_id: Number(form.produto_id),
+            quantidade: Number(form.qtd),
+            qtd: Number(form.qtd),
+            valorUnitario: selectedProd?.preco || 0,
+            preco: selectedProd?.preco || 0,
+            nome_produto: selectedProd?.nome || ''
+          }
+        ],
+        valorTotal: (selectedProd?.preco || 0) * form.qtd,
+        valor_total: (selectedProd?.preco || 0) * form.qtd,
+        status: 'Pendente'
+      };
+
+      const res = await createPedido(payload);
+      if (res.success) {
+        toast.success('Serviço solicitado com sucesso!');
+        setShowCreateModal(false);
+        setForm({ produto_id: '', qtd: 1, destino: '', data_entrega: '', obs: '' });
+        load();
+      } else {
+        toast.error(res.error?.message || 'Erro ao criar pedido.');
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const fmtDate = (d: string) => {
     if (!d) return '-';
-    // Handle both YYYY-MM-DD and YYYY-MM-DD HH:MM:SS
-    const datePart = d.split(' ')[0];
-    return new Date(datePart + 'T12:00:00').toLocaleDateString('pt-BR');
+    try {
+      const datePart = d.split(' ')[0];
+      return new Date(datePart + 'T12:00:00').toLocaleDateString('pt-BR');
+    } catch { return d; }
   };
   const fmtPrice = (n: number) => `R$ ${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-
-  // Summary counts
-  const counts = statusOptions.reduce((acc, s) => {
-    acc[s.value] = pedidos.filter(p => p.status === s.value).length;
-    return acc;
-  }, {} as Record<string, number>);
 
   const statusColors: Record<string, string> = {
     Pendente: '#FFD60A', Confirmado: '#0A84FF', 'Em Rota': '#8B5CF6', Entregue: '#30D158', Cancelado: '#FF453A'
@@ -78,52 +180,37 @@ export function OrdersPage() {
     <div>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '24px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ fontSize: '22px', fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#0D1B2A', margin: '0 0 4px' }}>Pedidos</h1>
-          <p style={{ fontSize: '13px', color: '#8896A5', margin: 0 }}>{pedidos.length} pedidos no sistema</p>
+          <h1 style={{ fontSize: '22px', fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#0D1B2A', margin: '0 0 4px' }}>
+            {isCliente ? 'Meus Pedidos' : 'Gestão de Pedidos'}
+          </h1>
+          <p style={{ fontSize: '13px', color: '#8896A5', margin: 0 }}>
+            {isCliente ? 'Acompanhe suas solicitações em tempo real' : `${pedidos.length} pedidos no sistema`}
+          </p>
         </div>
-        <button onClick={() => toast.info('Funcionalidade de novo pedido em desenvolvimento.')} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 18px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #0A84FF, #0060CC)', color: '#fff', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif", boxShadow: '0 4px 14px rgba(10,132,255,0.3)' }}>
-          <Plus size={16} /> Novo Pedido
-        </button>
-      </div>
-
-      {/* Status summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '12px', marginBottom: '24px' }} className="order-status-grid">
-        {statusOptions.map(s => (
-          <button key={s.value} onClick={() => setStatusFilter(statusFilter === s.value ? '' : s.value)}
-            style={{
-              background: statusFilter === s.value ? `${statusColors[s.value]}15` : '#fff',
-              borderRadius: '12px', padding: '14px 16px',
-              border: `1.5px solid ${statusFilter === s.value ? statusColors[s.value] : '#DDE3EE'}`,
-              boxShadow: '0 2px 8px rgba(10,30,60,0.06)', cursor: 'pointer',
-              textAlign: 'left', transition: 'all 0.2s',
-            }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '7px', marginBottom: '6px' }}>
-              <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: statusColors[s.value], flexShrink: 0 }} />
-              <span style={{ fontSize: '11px', fontWeight: 600, color: '#8896A5', textTransform: 'uppercase', letterSpacing: '0.6px' }}>{s.label}</span>
-            </div>
-            <div style={{ fontSize: '22px', fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif", color: statusColors[s.value] }}>{counts[s.value]}</div>
+        {user?.role !== 'operador' && (
+          <button onClick={() => setShowCreateModal(true)} style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '10px 18px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #0A84FF, #0060CC)', color: '#fff', fontSize: '13.5px', fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif", boxShadow: '0 4px 14px rgba(10,132,255,0.3)' }}>
+            <Plus size={16} /> {isCliente ? 'Solicitar Serviço' : 'Novo Pedido'}
           </button>
-        ))}
+        )}
       </div>
 
-      {/* Filters */}
       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '18px', flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#fff', border: '1.5px solid #DDE3EE', borderRadius: '9px', padding: '8px 14px', flex: 1, minWidth: '200px', maxWidth: '320px' }}>
           <Search size={14} color="#8896A5" />
-          <input placeholder="Buscar por número ou cliente…" value={search} onChange={e => setSearch(e.target.value)} style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', color: '#0D1B2A', width: '100%', fontFamily: "'Inter', sans-serif" }} />
+          <input placeholder="Buscar por número ou produto…" value={search} onChange={e => setSearch(e.target.value)} style={{ border: 'none', background: 'transparent', outline: 'none', fontSize: '13px', color: '#0D1B2A', width: '100%', fontFamily: "'Inter', sans-serif" }} />
         </div>
-        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: '9px 14px', borderRadius: '9px', border: '1.5px solid #DDE3EE', background: '#fff', fontSize: '13px', color: '#4A5568', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif" }}>
+        <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} style={{ padding: '9px 14px', borderRadius: '9px', border: '1.5px solid #DDE3EE', background: '#fff', fontSize: '13px', color: '#4A5568', cursor: 'pointer', outline: 'none' }}>
           <option value="">Todos os status</option>
           {statusOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
         </select>
-        <span style={{ fontSize: '12px', color: '#8896A5', marginLeft: 'auto' }}>{filtered.length} pedido(s)</span>
+        <span style={{ fontSize: '12px', color: '#8896A5', marginLeft: 'auto' }}>{filtered.length} registro(s)</span>
       </div>
 
-      {/* Table */}
       <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #DDE3EE', boxShadow: '0 2px 12px rgba(10,30,60,0.07)', overflow: 'hidden' }}>
         {loading ? (
-          <div style={{ padding: '60px', textAlign: 'center' }}>
-            <div style={{ width: '28px', height: '28px', border: '3px solid #DDE3EE', borderTopColor: '#0A84FF', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto' }} />
+          <div style={{ padding: '60px', textAlign: 'center', color: '#0A84FF' }}>
+            <Loader2 size={32} className="spinner" style={{ margin: '0 auto' }} />
+            <p style={{ marginTop: '12px', fontSize: '14px' }}>Carregando dados...</p>
           </div>
         ) : filtered.length === 0 ? (
           <div style={{ padding: '60px', textAlign: 'center' }}>
@@ -135,43 +222,34 @@ export function OrdersPage() {
             <table style={{ width: '100%', borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: '#F5F7FA' }}>
-                  {['Pedido', 'Cliente', 'Data', 'Prazo', 'Total', 'Status', 'Alterar Status', 'Ações'].map(h => (
-                    <th key={h} style={{ padding: '11px 18px', fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.9px', color: '#8896A5', textAlign: 'left', borderBottom: '1px solid #DDE3EE', whiteSpace: 'nowrap' }}>{h}</th>
+                  {['Pedido', !isCliente && 'Cliente', 'Produto', 'Previsão', 'Total', 'Status', !isCliente && 'Ação', 'Exibir'].filter(Boolean).map(h => (
+                    <th key={h as string} style={{ padding: '12px 18px', fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', color: '#8896A5', textAlign: 'left', borderBottom: '1px solid #DDE3EE' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(p => (
-                  <tr key={p.id}
-                    onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(10,132,255,0.02)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-                    style={{ transition: 'background 0.15s' }}
-                  >
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
-                      <span style={{ fontSize: '13px', fontWeight: 700, color: '#0A84FF', fontFamily: 'monospace' }}>#{p.id}</span>
+                  <tr key={p.id} style={{ borderBottom: '1px solid #F5F7FA' }}>
+                    <td style={{ padding: '14px 18px', fontSize: '13px', fontWeight: 700, color: '#0A84FF', fontFamily: 'monospace' }}>#{p.id}</td>
+                    {!isCliente && <td style={{ padding: '14px 18px', fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{p.cliente_nome}</td>}
+                    <td style={{ padding: '14px 18px' }}>
+                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{p.produto_nome}</div>
+                      <div style={{ fontSize: '11px', color: '#8896A5' }}>Quantidade: {p.qtd}</div>
                     </td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
-                      <div style={{ fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{p.cliente_nome}</div>
-                      <div style={{ fontSize: '11px', color: '#8896A5' }}>{p.produto_nome} (x{p.qtd})</div>
-                    </td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{fmtDate(p.criado_em || '')}</td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{fmtDate(p.data_entrega)}</td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', fontWeight: 700, color: '#0D1B2A' }}>{fmtPrice(p.valor)}</td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}><StatusBadge status={p.status.toLowerCase()} /></td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
-                      <select
-                        value={p.status}
-                        disabled={updatingId === p.id}
-                        onChange={e => handleStatusChange(p.id, e.target.value as Pedido['status'])}
-                        style={{ padding: '6px 10px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#F5F7FA', fontSize: '12.5px', color: '#4A5568', cursor: 'pointer', outline: 'none', fontFamily: "'Inter', sans-serif", opacity: updatingId === p.id ? 0.6 : 1 }}
-                      >
-                        {statusOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                      </select>
-                    </td>
-                    <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
-                      <div style={{ display: 'flex', gap: '6px' }}>
-                        <button onClick={() => setViewPedido(p)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0A84FF' }}><Eye size={13} /></button>
-                        <button onClick={() => setDeleteTarget(p)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF453A' }}><Trash2 size={13} /></button>
+                    <td style={{ padding: '14px 18px', fontSize: '13px', color: '#4A5568' }}>{fmtDate(p.data_entrega)}</td>
+                    <td style={{ padding: '14px 18px', fontSize: '13px', fontWeight: 700, color: '#0D1B2A' }}>{fmtPrice(p.valor)}</td>
+                    <td style={{ padding: '14px 18px' }}><StatusBadge status={p.status.toLowerCase()} /></td>
+                    {!isCliente && (
+                      <td style={{ padding: '14px 18px' }}>
+                        <select value={p.status} onChange={e => handleStatusChange(p.id, e.target.value as any)} style={{ padding: '6px 8px', borderRadius: '6px', border: '1.5px solid #DDE3EE', fontSize: '12px', outline: 'none' }}>
+                          {statusOptions.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                        </select>
+                      </td>
+                    )}
+                    <td style={{ padding: '14px 18px' }}>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button onClick={() => setViewPedido(p)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#0A84FF' }}><Eye size={16} /></button>
+                        {!isCliente && <button onClick={() => setDeleteTarget(p)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#FF453A' }}><Trash2 size={16} /></button>}
                       </div>
                     </td>
                   </tr>
@@ -182,55 +260,71 @@ export function OrdersPage() {
         )}
       </div>
 
-      {/* View Pedido Modal */}
-      {viewPedido && (
-        <Modal open={!!viewPedido} onClose={() => setViewPedido(null)} title={`Pedido #${viewPedido.id}`} maxWidth={520}>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-              {[
-                { label: 'Cliente', value: viewPedido.cliente_nome },
-                { label: 'Status', value: <StatusBadge status={viewPedido.status.toLowerCase()} /> },
-                { label: 'Data do Pedido', value: fmtDate(viewPedido.criado_em || '') },
-                { label: 'Previsão de Entrega', value: fmtDate(viewPedido.data_entrega) },
-              ].map((item, i) => (
-                <div key={i} style={{ background: '#F5F7FA', borderRadius: '10px', padding: '12px 14px' }}>
-                  <div style={{ fontSize: '10.5px', fontWeight: 700, color: '#8896A5', textTransform: 'uppercase', letterSpacing: '0.6px', marginBottom: '4px' }}>{item.label}</div>
-                  <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#0D1B2A' }}>{item.value}</div>
-                </div>
-              ))}
-            </div>
+      <Modal open={showCreateModal} onClose={() => setShowCreateModal(false)} title={isCliente ? 'Nova Solicitação de Serviço' : 'Novo Pedido'}
+        footer={
+          <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end' }}>
+            <button onClick={() => setShowCreateModal(false)} style={{ padding: '9px 18px', borderRadius: '8px', border: '1.5px solid #DDE3EE', background: 'transparent', cursor: 'pointer', fontSize: '13.5px', color: '#4A5568' }}>Cancelar</button>
+            <button onClick={handleCreatePedido} disabled={saving} style={{ padding: '9px 20px', borderRadius: '8px', border: 'none', background: 'linear-gradient(135deg, #0A84FF, #0060CC)', color: '#fff', fontSize: '13.5px', fontWeight: 600, cursor: saving ? 'not-allowed' : 'pointer' }}>
+              {saving ? 'Processando...' : 'Confirmar Solicitação'}
+            </button>
+          </div>
+        }
+      >
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
+          <FormField label="Produto / Serviço" fullWidth required>
+            <Select value={form.produto_id} onChange={e => setForm(f => ({ ...f, produto_id: e.target.value }))}>
+              <option value="">Selecione um item...</option>
+              {produtos
+                .filter(p => !isCliente || p.status === 'Ativo')
+                .map(p => <option key={p.id} value={p.id}>{p.nome} - {fmtPrice(p.preco)}</option>)
+              }
+            </Select>
+          </FormField>
+          <FormField label="Quantidade" required>
+            <Input type="number" min={1} value={form.qtd} onChange={e => setForm(f => ({ ...f, qtd: Number(e.target.value) }))} />
+          </FormField>
+          <FormField label="Data Desejada" required>
+            <Input type="date" value={form.data_entrega} onChange={e => setForm(f => ({ ...f, data_entrega: e.target.value }))} />
+          </FormField>
+          <FormField label="Local de Entrega / Destino" fullWidth required>
+            <Input value={form.destino} onChange={e => setForm(f => ({ ...f, destino: e.target.value }))} placeholder="Endereço completo" />
+          </FormField>
+          <FormField label="Observações Adicionais" fullWidth>
+            <textarea value={form.obs} onChange={e => setForm(f => ({ ...f, obs: e.target.value }))} style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1.5px solid #DDE3EE', minHeight: '80px', outline: 'none' }} placeholder="Detalhes extras sobre sua solicitação..." />
+          </FormField>
+        </div>
+      </Modal>
 
-            <div style={{ background: '#F5F7FA', borderRadius: '10px', overflow: 'hidden' }}>
-              <div style={{ padding: '10px 14px', borderBottom: '1px solid #DDE3EE' }}>
-                <span style={{ fontSize: '11.5px', fontWeight: 700, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.7px' }}>Produto</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 14px', background: '#fff' }}>
-                <div>
-                  <div style={{ fontSize: '14px', fontWeight: 700, color: '#0D1B2A' }}>{viewPedido.produto_nome}</div>
-                  <div style={{ fontSize: '12px', color: '#8896A5' }}>Quantidade: {viewPedido.qtd}</div>
-                </div>
-                <div style={{ textAlign: 'right' }}>
-                  <div style={{ fontSize: '11px', color: '#8896A5', marginBottom: '2px' }}>Valor Total</div>
-                  <div style={{ fontSize: '18px', fontWeight: 800, color: '#0A84FF', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{fmtPrice(viewPedido.valor)}</div>
-                </div>
-              </div>
-              {viewPedido.obs && (
-                <div style={{ padding: '12px 14px', borderTop: '1px solid #DDE3EE', fontSize: '12px', color: '#4A5568', background: '#FDFDFD' }}>
-                  <strong>Observação:</strong> {viewPedido.obs}
-                </div>
-              )}
+      {viewPedido && (
+        <Modal open={!!viewPedido} onClose={() => setViewPedido(null)} title={`Pedido #${viewPedido.id}`}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+            <div style={{ background: '#F5F7FA', padding: '12px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#8896A5' }}>CLIENTE</div>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>{viewPedido.cliente_nome}</div>
+            </div>
+            <div style={{ background: '#F5F7FA', padding: '12px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#8896A5' }}>STATUS</div>
+              <StatusBadge status={viewPedido.status.toLowerCase()} />
+            </div>
+            <div style={{ background: '#F5F7FA', padding: '12px', borderRadius: '8px', gridColumn: 'span 2' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#8896A5' }}>PRODUTO</div>
+              <div style={{ fontSize: '14px', fontWeight: 600 }}>{viewPedido.produto_nome} (x{viewPedido.qtd})</div>
+            </div>
+            <div style={{ background: '#F5F7FA', padding: '12px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#8896A5' }}>VALOR TOTAL</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#0A84FF' }}>{fmtPrice(viewPedido.valor)}</div>
+            </div>
+            <div style={{ background: '#F5F7FA', padding: '12px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#8896A5' }}>DATAL ENTREGA</div>
+              <div style={{ fontSize: '14px' }}>{fmtDate(viewPedido.data_entrega)}</div>
             </div>
           </div>
         </Modal>
       )}
 
-      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} loading={deleting} title="Remover Pedido" message={`Tem certeza que deseja remover o pedido #${deleteTarget?.id}?`} confirmLabel="Remover Pedido" />
+      <ConfirmModal open={!!deleteTarget} onClose={() => setDeleteTarget(null)} onConfirm={handleDelete} loading={deleting} title="Excluir Pedido" message={`Deseja remover o pedido #${deleteTarget?.id}?`} confirmLabel="Excluir" />
 
-      <style>{`
-        @keyframes spin { to { transform: rotate(360deg); } }
-        @media (max-width: 900px) { .order-status-grid { grid-template-columns: repeat(3,1fr) !important; } }
-        @media (max-width: 600px) { .order-status-grid { grid-template-columns: repeat(2,1fr) !important; } }
-      `}</style>
+      <style>{`.spinner { animation: spin 1s linear infinite; } @keyframes spin { to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 }

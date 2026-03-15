@@ -21,22 +21,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const validateSession = async () => {
-      const storedToken = localStorage.getItem('dp_token');
+      const storedToken = localStorage.getItem('distribpro_token');
       if (!storedToken) {
         setIsLoading(false);
         return;
       }
 
-      // Token exists — validate it against the real API
       setToken(storedToken);
       const res = await authMe();
 
       if (res.success && res.data) {
-        setUser(res.data);
-        localStorage.setItem('dp_user', JSON.stringify(res.data));
+        let userWithId = res.data;
+        // If it's a client but missing clienteId, try to find it
+        if (userWithId.role === 'cliente' && !userWithId.clienteId) {
+          try {
+            const { getClientes } = await import('../services/api');
+            const clRes = await getClientes();
+            if (clRes.success && clRes.data) {
+              const match = clRes.data.find(c => c.email === userWithId.email);
+              if (match) {
+                userWithId = { ...userWithId, clienteId: match.id };
+              }
+            }
+          } catch (e) {
+            console.error('Falha ao recuperar ID de cliente:', e);
+          }
+        }
+        setUser(userWithId);
+        localStorage.setItem('dp_user', JSON.stringify(userWithId));
       } else {
-        // Token is invalid/expired — clear everything
-        localStorage.removeItem('dp_token');
+        localStorage.removeItem('distribpro_token');
         localStorage.removeItem('dp_user');
         setToken(null);
         setUser(null);
@@ -48,17 +62,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     validateSession();
   }, []);
 
-  const login = (tkn: string, usr: User) => {
-    localStorage.setItem('dp_token', tkn);
-    localStorage.setItem('dp_user', JSON.stringify(usr));
+  const login = async (tkn: string, usr: User) => {
+    localStorage.removeItem('distribpro_token');
+    localStorage.removeItem('dp_user');
+    
+    let userWithId = usr;
+    // If client but missing ID, try to find it now
+    if (userWithId.role === 'cliente' && !userWithId.clienteId) {
+      try {
+        const { getClientes } = await import('../services/api');
+        const clRes = await getClientes();
+        if (clRes.success && clRes.data) {
+          const match = clRes.data.find(c => c.email === userWithId.email);
+          if (match) {
+            userWithId = { ...userWithId, clienteId: match.id };
+          }
+        }
+      } catch (e) {
+        console.error('Falha ao recuperar ID de cliente no login:', e);
+      }
+    }
+
+    localStorage.setItem('distribpro_token', tkn);
+    localStorage.setItem('dp_user', JSON.stringify(userWithId));
     setToken(tkn);
-    setUser(usr);
+    setUser(userWithId);
   };
 
   const logout = async () => {
     // Call backend logout (best-effort, don't block on failure)
     await apiLogout();
-    localStorage.removeItem('dp_token');
+    localStorage.removeItem('distribpro_token');
     localStorage.removeItem('dp_user');
     setToken(null);
     setUser(null);

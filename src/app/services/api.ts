@@ -1,7 +1,6 @@
 import type { ApiResponse, Produto, Cliente, Fornecedor, Pedido, EstoqueItem, KPIs, EntregaData, StatusPedidoData, Config } from '../types';
 import { httpClient } from './httpClient';
 import {
-  mockKPIs, mockEntregas, mockStatusPedidos,
   mockProdutos, mockClientes, mockFornecedores,
   mockPedidos, mockConfig
 } from './mockData';
@@ -72,6 +71,17 @@ export const updateCliente = async (id: number | string, data: Partial<Cliente>)
 
 export const deleteCliente = async (id: number | string): Promise<ApiResponse<null>> => {
   return httpClient.del<ApiResponse<null>>(`/clientes/${id}`);
+};
+
+/**
+ * ClientesAPI object as requested by user.
+ */
+export const ClientesAPI = {
+  list: getClientes,
+  get: getClienteById,
+  create: createCliente,
+  update: updateCliente,
+  remove: deleteCliente
 };
 
 // ── FORNECEDORES (real API) ───────────────────────────

@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { BarChart2, Download, TrendingUp, Calendar, FileText, Filter } from 'lucide-react';
+import { downloadCSV } from '../utils/exportUtils';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Legend
@@ -54,8 +55,10 @@ export function ReportsPage() {
             <option value="6meses">Últimos 6 meses</option>
             <option value="12meses">Último ano</option>
           </select>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #0A84FF, #0060CC)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif", boxShadow: '0 4px 14px rgba(10,132,255,0.3)' }}>
-            <Download size={14} /> Exportar PDF
+          <button 
+            onClick={() => downloadCSV(vendasMensais, 'relatorio_vendas_mensais')}
+            style={{ display: 'flex', alignItems: 'center', gap: '7px', padding: '9px 16px', borderRadius: '9px', border: 'none', background: 'linear-gradient(135deg, #0A84FF, #0060CC)', color: '#fff', fontSize: '13px', fontWeight: 600, cursor: 'pointer', fontFamily: "'Inter', sans-serif", boxShadow: '0 4px 14px rgba(10,132,255,0.3)' }}>
+            <Download size={14} /> Exportar CSV
           </button>
         </div>
       </div>
@@ -127,8 +130,10 @@ export function ReportsPage() {
             <h3 style={{ fontSize: '15px', fontWeight: 700, fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#0D1B2A', margin: 0 }}>Top Produtos por Receita</h3>
             <p style={{ fontSize: '12px', color: '#8896A5', margin: '2px 0 0' }}>Ranking dos mais vendidos no período</p>
           </div>
-          <button style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '1.5px solid #DDE3EE', background: '#fff', fontSize: '12.5px', fontWeight: 600, color: '#4A5568', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>
-            <FileText size={13} /> Exportar
+          <button 
+            onClick={() => downloadCSV(topProdutos, 'rank_produtos_receita')}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '7px 14px', borderRadius: '8px', border: '1.5px solid #DDE3EE', background: '#fff', fontSize: '12.5px', fontWeight: 600, color: '#4A5568', cursor: 'pointer', fontFamily: "'Inter', sans-serif" }}>
+            <FileText size={13} /> Exportar CSV
           </button>
         </div>
         <div style={{ overflowX: 'auto' }}>

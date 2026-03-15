@@ -97,6 +97,10 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
   const initials = user?.nome?.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() || 'AM';
 
+  // Role-based logic
+  const isCliente = user?.role === 'cliente';
+  const isAdminOrOperador = user?.role === 'admin' || user?.role === 'operador' || user?.role === 'Usuário';
+
   return (
     <>
       {/* Overlay mobile */}
@@ -155,9 +159,20 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Nav */}
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '8px' }}>
           <NavGroup label="Principal" items={mainNav} />
-          <NavGroup label="Cadastros" items={registrosNav} />
-          <NavGroup label="Operações" items={operacoesNav} />
-          <NavGroup label="Sistema" items={sistemaNav} />
+          
+          {isAdminOrOperador && (
+            <>
+              <NavGroup label="Cadastros" items={registrosNav} />
+              <NavGroup label="Operações" items={operacoesNav} />
+              <NavGroup label="Sistema" items={sistemaNav} />
+            </>
+          )}
+
+          {isCliente && (
+            <NavGroup label="Minha Conta" items={[
+              { to: '/pedidos', icon: <ShoppingCart size={18} />, label: 'Meus Pedidos' },
+            ]} />
+          )}
         </div>
 
         {/* User footer */}

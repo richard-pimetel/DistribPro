@@ -19,7 +19,18 @@ export function RegisterPage() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [showPass, setShowPass] = useState(false);
+  const [role, setRole] = useState('cliente');
   const [loading, setLoading] = useState(false);
+  
+  // Additional Client Fields
+  const [tipo, setTipo] = useState<'PJ' | 'PF'>('PJ');
+  const [doc, setDoc] = useState('');
+  const [tel, setTel] = useState('');
+  const [cidade, setCidade] = useState('');
+  const [estado, setEstado] = useState('SP');
+  const [limite, setLimite] = useState(0);
+
+  const estados = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,11 +40,43 @@ export function RegisterPage() {
     }
     setLoading(true);
     try {
-      const res = await authRegister(nome, email, senha);
+      const res = await authRegister(nome, email, senha, role);
       if (res.success && res.data) {
-        login(res.data.token, res.data.user);
-        toast.success(`Conta criada com sucesso! Bem-vindo, ${res.data.user.nome}!`);
-        navigate('/dashboard');
+        const { token, user } = res.data;
+        
+        // 1. MUST LOGIN FIRST so localStorage token is set for subsequent API calls
+        login(token, user);
+
+        // 2. If it's a client, promote to business clients list automatically
+        if (user.role === 'cliente') {
+           try {
+             const { createCliente } = await import('../services/api');
+             const clientRes = await createCliente({
+               nome: user.nome,
+               email: user.email,
+               tipo: tipo, 
+               doc: doc || (tipo === 'PJ' ? '00.000.000/0001-00' : '000.000.000-00'), 
+               tel: tel || '(00) 0000-0000',
+               cidade: cidade || 'Pendente',
+               estado: estado,
+               limite: Number(limite) || 0,
+               status: 'Ativo',
+               // @ts-ignore
+               userId: user.id
+             });
+
+             if (clientRes.success && clientRes.data) {
+                // Update user object with the newly created business clienteId
+                const updatedUser = { ...user, clienteId: clientRes.data.id };
+                login(token, updatedUser); // Re-login with the augmented user object
+             }
+           } catch (e) {
+             console.error('Falha na vinculação automática de cliente:', e);
+           }
+        }
+
+        toast.success(`Conta criada com sucesso! Bem-vindo, ${user.nome}!`);
+        navigate(user.role === 'cliente' ? '/pedidos' : '/dashboard');
       } else {
         toast.error(res.error?.message || 'Erro ao realizar cadastro.');
       }
@@ -104,10 +147,10 @@ export function RegisterPage() {
       {/* Right Panel */}
       <div style={{
         flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: '#F5F7FA', padding: '40px',
+        background: '#F5F7FA', padding: '40px 20px', overflowY: 'auto'
       }}>
-        <div style={{ width: '100%', maxWidth: '400px' }}>
-          <div style={{ marginBottom: '36px' }}>
+        <div style={{ width: '100%', maxWidth: '440px', padding: '20px 0' }}>
+          <div style={{ marginBottom: '32px' }}>
             <h1 style={{ fontSize: '26px', fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#0D1B2A', margin: '0 0 8px', letterSpacing: '-0.3px' }}>
               Criar nova conta
             </h1>
@@ -116,7 +159,41 @@ export function RegisterPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+              <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Tipo de Conta
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setRole('cliente')}
+                  style={{
+                    padding: '10px', borderRadius: '10px', border: '1.5px solid',
+                    borderColor: role === 'cliente' ? '#0A84FF' : '#DDE3EE',
+                    background: role === 'cliente' ? 'rgba(10,132,255,0.05)' : '#fff',
+                    color: role === 'cliente' ? '#0A84FF' : '#4A5568',
+                    fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+                  }}
+                >
+                  Cliente
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('operador')}
+                  style={{
+                    padding: '10px', borderRadius: '10px', border: '1.5px solid',
+                    borderColor: role === 'operador' ? '#0A84FF' : '#DDE3EE',
+                    background: role === 'operador' ? 'rgba(10,132,255,0.05)' : '#fff',
+                    color: role === 'operador' ? '#0A84FF' : '#4A5568',
+                    fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+                  }}
+                >
+                  Operador
+                </button>
+              </div>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Nome Completo
@@ -141,7 +218,7 @@ export function RegisterPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 E-mail
               </label>
@@ -165,7 +242,7 @@ export function RegisterPage() {
               </div>
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Senha
               </label>
@@ -198,6 +275,47 @@ export function RegisterPage() {
                 </button>
               </div>
             </div>
+
+            {role === 'cliente' && (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#fff', padding: '14px', borderRadius: '12px', border: '1px solid #DDE3EE', marginTop: '2px' }}>
+                <div style={{ gridColumn: 'span 2', fontSize: '10.5px', fontWeight: 700, color: '#0A84FF', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>Dados Adicionais de Cliente</div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#4A5568' }}>Tipo de Pessoa</label>
+                  <select value={tipo} onChange={e => setTipo(e.target.value as any)} style={{ padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #DDE3EE', fontSize: '12.5px', outline: 'none' }}>
+                    <option value="PJ">PJ (Empresa)</option>
+                    <option value="PF">PF (Individual)</option>
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#4A5568' }}>Documento</label>
+                  <input value={doc} onChange={e => setDoc(e.target.value)} placeholder={tipo === 'PJ' ? '00.000.000/0000-00' : '000.000.000-00'} style={{ padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #DDE3EE', fontSize: '12.5px', outline: 'none' }} />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#4A5568' }}>Telefone</label>
+                  <input value={tel} onChange={e => setTel(e.target.value)} placeholder="(00) 00000-0000" style={{ padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #DDE3EE', fontSize: '12.5px', outline: 'none' }} />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#4A5568' }}>Cidade</label>
+                  <input value={cidade} onChange={e => setCidade(e.target.value)} placeholder="Sua cidade" style={{ padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #DDE3EE', fontSize: '12.5px', outline: 'none' }} />
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#4A5568' }}>Estado</label>
+                  <select value={estado} onChange={e => setEstado(e.target.value)} style={{ padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #DDE3EE', fontSize: '12.5px', outline: 'none' }}>
+                    {estados.map(est => <option key={est} value={est}>{est}</option>)}
+                  </select>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#4A5568' }}>Limite Sugerido</label>
+                  <input type="number" value={limite} onChange={e => setLimite(Number(e.target.value))} style={{ padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #DDE3EE', fontSize: '12.5px', outline: 'none' }} />
+                </div>
+              </div>
+            )}
 
             <button
               type="submit"

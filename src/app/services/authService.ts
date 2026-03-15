@@ -10,10 +10,11 @@ import type { ApiResponse, User } from '../types';
 export const authRegister = async (
   nome: string,
   email: string,
-  senha: string
+  senha: string,
+  role: string = 'cliente'
 ): Promise<ApiResponse<{ token: string; user: User }>> => {
   try {
-    const data = await httpClient.post<any>('/auth/register', { nome, email, senha });
+    const data = await httpClient.post<any>('/auth/register', { nome, email, senha, role });
     const responseData = data.data || data;
     
     return {
@@ -24,7 +25,7 @@ export const authRegister = async (
           id: String(responseData.userId || responseData.id || ''),
           nome: responseData.nome || nome,
           email: email,
-          role: responseData.role || 'operador',
+          role: responseData.role || role,
         },
       },
     };
@@ -91,9 +92,13 @@ export const authLogin = async (
 export const authLogout = async (): Promise<ApiResponse<null>> => {
   try {
     await httpClient.post<any>('/auth/logout');
+    localStorage.removeItem('distribpro_token');
+    localStorage.removeItem('dp_user');
     return { success: true, data: null };
   } catch {
     // Even if the API call fails, we still want to log out locally
+    localStorage.removeItem('distribpro_token');
+    localStorage.removeItem('dp_user');
     return { success: true, data: null };
   }
 };

@@ -1,7 +1,7 @@
 const BASE_URL = 'https://back-c-faculdade.onrender.com/api/v1';
 
 function getToken(): string | null {
-  return localStorage.getItem('dp_token');
+  return localStorage.getItem('distribpro_token');
 }
 
 function buildHeaders(hasBody: boolean = false): HeadersInit {
@@ -23,7 +23,7 @@ async function handleResponse<T>(response: Response, endpoint: string): Promise<
                          endpoint.includes('/auth/register');
 
   if (response.status === 401 && !isAuthEndpoint) {
-    localStorage.removeItem('dp_token');
+    localStorage.removeItem('distribpro_token');
     localStorage.removeItem('dp_user');
     window.location.href = '/login';
     throw new Error('Sessão expirada. Faça login novamente.');
