@@ -10,8 +10,10 @@ import type {
   RelatorioVendas, RelatorioVendasProduto, RelatorioVendasCliente, 
   RelatorioEstoque, RelatorioFinanceiro 
 } from '../types';
+import { usePermissions } from '../hooks/usePermissions';
 
 export function ReportsPage() {
+  const { isOperador } = usePermissions();
   // Period filter states (default: first day of current month to today)
   // Helper to format Date to YYYY-MM-DD in local time
   const toLocalISO = (date: Date) => {
@@ -156,12 +158,12 @@ export function ReportsPage() {
           </div>
           <button 
             onClick={handleGenerate}
-            disabled={isGenerating}
+            disabled={isGenerating || !isOperador}
             style={{ 
               background: 'linear-gradient(135deg, #0A84FF, #0060CC)', color: '#fff', border: 'none', 
               padding: '8px 16px', borderRadius: '8px', fontSize: '13px', fontWeight: 600, 
-              cursor: isGenerating ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s',
-              opacity: isGenerating ? 0.7 : 1
+              cursor: isGenerating || !isOperador ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', gap: '8px', transition: 'all 0.2s',
+              opacity: isGenerating || !isOperador ? 0.7 : 1
             }}
             className="btn-hover"
           >
@@ -171,7 +173,18 @@ export function ReportsPage() {
         </div>
       </div>
 
-      {/* Tabs */}
+      {!isOperador ? (
+        <div style={{ textAlign: 'center', padding: '60px 20px', background: '#fff', borderRadius: '16px', border: '1.5px dashed #DDE3EE' }}>
+          <AlertCircle size={48} color="#FFD60A" style={{ margin: '0 auto 16px' }} />
+          <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#0D1B2A', margin: '0 0 8px' }}>Relatórios Consolidados Bloqueados</h2>
+          <p style={{ fontSize: '14px', color: '#667085', margin: '0 auto', maxWidth: '400px' }}>
+            A visão consolidada da plataforma é exclusiva para Operadores. 
+            Em breve, os relatórios individuais por fornecedor estarão disponíveis!
+          </p>
+        </div>
+      ) : (
+        <>
+          {/* Tabs */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '24px', overflowX: 'auto', paddingBottom: '4px' }}>
         {[
           { id: 'vendas', label: 'Vendas', icon: <TrendingUp size={16} /> },
@@ -328,6 +341,8 @@ export function ReportsPage() {
           </div>
         )}
       </div>
+      </>
+      )}
 
       <style>{`
         .spinner { animation: spin 1s linear infinite; }

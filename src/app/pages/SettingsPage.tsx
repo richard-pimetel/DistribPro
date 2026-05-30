@@ -9,12 +9,15 @@ import { ConfigAPI, PerfilAPI } from '../services/api';
 import type { Config, User } from '../types';
 import { FormField, Input } from '../components/ui/FormField';
 import { useAuth } from '../context/AuthContext';
+import { usePermissions } from '../hooks/usePermissions';
 
 export function SettingsPage() {
   const { user, updateUser } = useAuth();
+  const { canManageEmpresa } = usePermissions();
   
   // Tabs: 'empresa' | 'perfil' | 'seguranca'
-  const [activeTab, setActiveTab] = useState<'empresa' | 'perfil' | 'seguranca'>('empresa');
+  // Operador inicia em 'perfil' pois não tem acesso à aba Empresa
+  const [activeTab, setActiveTab] = useState<'empresa' | 'perfil' | 'seguranca'>(canManageEmpresa ? 'empresa' : 'perfil');
 
   // --- SEÇÃO 1: EMPRESA ---
   const [empresaLoading, setEmpresaLoading] = useState(true);
@@ -182,7 +185,8 @@ export function SettingsPage() {
       {/* Tab Navigation */}
       <nav style={{ display: 'flex', gap: '8px', marginBottom: '28px', background: '#F0F3F8', padding: '6px', borderRadius: '14px', width: 'fit-content' }}>
         {[
-          { id: 'empresa', label: 'Empresa', icon: <Building2 size={16} /> },
+          // Aba Empresa: somente admin pode ver
+          ...(canManageEmpresa ? [{ id: 'empresa', label: 'Empresa', icon: <Building2 size={16} /> }] : []),
           { id: 'perfil', label: 'Meu Perfil', icon: <UserCog size={16} /> },
           { id: 'seguranca', label: 'Segurança', icon: <ShieldCheck size={16} /> },
         ].map(tab => (

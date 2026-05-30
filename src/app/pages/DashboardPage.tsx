@@ -3,7 +3,10 @@ import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip,
   ResponsiveContainer, PieChart, Pie, Cell, Legend
 } from 'recharts';
-import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Target, AlertTriangle, Package, RefreshCw } from 'lucide-react';
+import { 
+  TrendingUp, TrendingDown, DollarSign, ShoppingCart, Users, Target, 
+  AlertTriangle, Package, RefreshCw, ArrowRight, Activity, Bell, Calendar 
+} from 'lucide-react';
 import {
   getDashboardKPIs, getDashboardEntregas, getDashboardStatus,
   getProdutosEstoqueBaixo, getClientes, getFornecedores,
@@ -66,73 +69,118 @@ export function DashboardPage() {
   const [periodo, setPeriodo] = useState(7);
 
   const isCliente = user?.role === 'cliente';
+  const isAdmin = user?.role === 'admin'; // Fornecedor
+  const isOperador = user?.role === 'operador';
 
   const load = async () => {
     setLoading(true);
     try {
-      if (isCliente) {
-        // If client, we fetch their specific data. 
-        // For now, we reuse existing APIs but filter results locally if needed.
-        // Ideally the backend has /dashboard/cliente 
+      if (isCliente || isAdmin) {
+        // If client or admin(fornecedor), we fetch their specific data. 
+        // For now, we reuse existing APIs but filter results locally since backend is generic.
         const resPed = await getPedidos();
+        const resProd = await getProdutosEstoqueBaixo(); // for Fornecedor
+        
         if (resPed.success && resPed.data) {
-          const targetClientId = user?.clienteId || user?.id;
-          const myPedidos = resPed.data.filter((p: any) => {
-            const cid = p.cliente_id || p.clienteId;
-            return !isCliente || String(cid) === String(targetClientId);
-          });
+          // Admin = Fornecedor. fornecedor_id vem do backend (/auth/me) ou falha para user.id como safe fallback
+          const targetId = isCliente
+            ? (user?.clienteId || user?.id)
+            : isAdmin
+              ? (user?.fornecedor_id || user?.id)
+              : user?.id;
+          
+          let myPedidos = [];
+          if (isCliente) {
+             myPedidos = resPed.data.filter((p: any) => String(p.cliente_id || p.clienteId) === String(targetId));
+          } else {
+             myPedidos = resPed.data.filter((p: any) => String(p.fornecedor_id) === String(targetId));
+          }
+          
           setPedidosRecentes(myPedidos.slice(0, 5));
           
-          // Calculate client KPIs locally for demo purposes
-          const totalSpent = myPedidos.reduce((acc: number, p: Pedido) => acc + (p.valor || 0), 0);
+          // Calculate KPIs locally
+          let lucroLiquido = 0;
+          let comissaoPlataforma = 0;
+          let totalBruto = 0;
+
+          myPedidos.forEach((p: Pedido) => {
+            const val = p.total || p.valor || 0;
+            totalBruto += val;
+            if (isAdmin) {
+              // Mock fallback for taxas, ideal is for backend to provide them on the Pedido
+              const taxa_op = p.taxa_operador || 10;
+              const taxa_forn = p.taxa_fornecedor || 90;
+              lucroLiquido += val * (taxa_forn / 100);
+              comissaoPlataforma += val * (taxa_op / 100);
+            }
+          });
+          
           const pending = myPedidos.filter((p: Pedido) => p.status === 'Pendente').length;
           const road = myPedidos.filter((p: Pedido) => p.status === 'Em Rota').length;
           
+          let myLowStock = 0;
+          let myTotalProds = 0;
+          if (isAdmin && resProd.success && resProd.data) {
+             const prods = await import('../services/api').then(m => m.getProdutos());
+             if (prods.success && prods.data) {
+                myTotalProds = prods.data.filter(p => String(p.fornecedor_id) === String(targetId)).length;
+             }
+             myLowStock = resProd.data.filter(p => String(p.fornecedor_id) === String(targetId) && p.estoque <= p.estoque_min).length;
+          }
+
           setKpis({
-            total_produtos: 0,
+            total_produtos: myTotalProds,
             total_clientes: 0,
             total_fornecedores: 0,
             pedidos_pendentes: pending,
             pedidos_em_rota: road,
-            faturamento_total: totalSpent,
-            estoque_baixo: 0
+            faturamento_total: totalBruto,
+            lucro_liquido: isAdmin ? lucroLiquido : undefined,
+            comissao_plataforma: isAdmin ? comissaoPlataforma : undefined,
+            estoque_baixo: myLowStock,
           });
 
-          // Simplified chart data for client
-          const sRes = await getDashboardStatus(); // We could aggregate myPedidos here too
-          if (sRes.success) {
-             const colors: Record<string, string> = { 'Entregue': '#30D158', 'Pendente': '#0A84FF', 'Em Rota': '#8B5CF6', 'Cancelado': '#FF453A', 'Confirmado': '#FFD60A' };
-             const mapped = sRes.data!.map(item => ({ ...item, color: colors[item.status] || '#8896A5', label: item.status }));
-             setStatusData(mapped);
+          const [sRes, eRes] = await Promise.allSettled([
+            getDashboardStatus(),
+            getDashboardEntregas(periodo),
+          ]);
+          if (sRes.status === 'fulfilled' && sRes.value.success) {
+            const colors: Record<string, string> = { 'Entregue': '#30D158', 'Pendente': '#0A84FF', 'Em Rota': '#8B5CF6', 'Cancelado': '#FF453A', 'Confirmado': '#FFD60A' };
+            setStatusData(sRes.value.data!.map(item => ({ ...item, color: colors[item.status] || '#8896A5', label: item.status })));
           }
-           const eRes = await getDashboardEntregas(periodo);
-           if (eRes.success) setEntregas(eRes.data!.map((p: any) => ({ ...p, total: myPedidos.filter((op: Pedido) => (op.criado_em || op.data_entrega).includes(p.dia)).length })));
-        }
+          if (eRes.status === 'fulfilled' && eRes.value.success) {
+            setEntregas(eRes.value.data!.map((p: any) => ({
+              ...p,
+              total: myPedidos.filter((op: Pedido) => (op.criado_em || op.data_entrega || '').includes(p.dia)).length,
+            })));
+          }
+
+        } // fim if (resPed.success)
       } else {
-        const results = await Promise.all([
-          getDashboardKPIs(), 
-          getDashboardEntregas(periodo), 
-          getDashboardStatus(), 
+        // OPERADOR — cada endpoint isolado para não travar se algum falhar
+        const [kRes, eRes, sRes, ebRes, prRes] = await Promise.allSettled([
+          getDashboardKPIs(),
+          getDashboardEntregas(periodo),
+          getDashboardStatus(),
           getProdutosEstoqueBaixo(),
           getPedidosRecentes()
         ]);
-        
-        const [kRes, eRes, sRes, ebRes, prRes] = results;
-        if (kRes.success) setKpis(kRes.data!);
-        if (eRes.success) setEntregas(eRes.data!);
-        if (sRes.success) {
+
+        if (kRes.status  === 'fulfilled' && kRes.value.success)  setKpis(kRes.value.data!);
+        if (eRes.status  === 'fulfilled' && eRes.value.success)  setEntregas(eRes.value.data!);
+        if (sRes.status  === 'fulfilled' && sRes.value.success) {
           const colors: Record<string, string> = { 'Entregue': '#30D158', 'Pendente': '#0A84FF', 'Em Rota': '#8B5CF6', 'Cancelado': '#FF453A', 'Confirmado': '#FFD60A' };
-          const mapped = sRes.data!.map(item => ({ ...item, color: colors[item.status] || '#8896A5', label: item.status }));
-          setStatusData(mapped);
+          setStatusData(sRes.value.data!.map(item => ({ ...item, color: colors[item.status] || '#8896A5', label: item.status })));
         }
-        if (ebRes.success) setEstoqueBaixo(ebRes.data!);
-        if (prRes.success && prRes.data) setPedidosRecentes(prRes.data);
+        if (ebRes.status === 'fulfilled' && ebRes.value.success) setEstoqueBaixo(ebRes.value.data!);
+        if (prRes.status === 'fulfilled' && prRes.value.success && prRes.value.data) setPedidosRecentes(prRes.value.data);
       }
     } catch (err) {
       console.error('Erro ao carregar dados do dashboard:', err);
     } finally {
       setLoading(false);
     }
+
   };
 
   useEffect(() => { 
@@ -177,7 +225,7 @@ export function DashboardPage() {
             {getGreeting()}, {user?.nome?.split(' ')[0]} 👋
           </h1>
           <p style={{ fontSize: '13px', color: '#8896A5', margin: 0 }}>
-            {isCliente ? 'Bem-vindo ao seu portal de serviços' : new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            {isCliente ? 'Bem-vindo ao seu portal de compras' : isAdmin ? 'Seu painel de Fornecedor' : new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
@@ -209,18 +257,27 @@ export function DashboardPage() {
 
       {/* KPI Cards */}
       {kpis && (
-        <div style={{ display: 'grid', gridTemplateColumns: isCliente ? 'repeat(3, 1fr)' : 'repeat(5, 1fr)', gap: '18px', marginBottom: '28px' }} className="stats-grid">
+        <div style={{ display: 'grid', gridTemplateColumns: isCliente ? 'repeat(3, 1fr)' : isAdmin ? 'repeat(5, 1fr)' : 'repeat(6, 1fr)', gap: '18px', marginBottom: '28px' }} className="stats-grid">
           {isCliente ? (
             <>
-              <StatCard label="Total Investido" value={fmt(kpis.faturamento_total)} icon={<DollarSign size={20} />} color="#0A84FF" />
-              <StatCard label="Solicitações Pendentes" value={fmtNum(kpis.pedidos_pendentes)} icon={<ShoppingCart size={20} />} color="#FF6B35" />
-              <StatCard label="Pedidos Concluídos" value={fmtNum(kpis.pedidos_em_rota)} icon={<TrendingUp size={20} />} color="#30D158" />
+              <StatCard label="Total Gasto" value={fmt(kpis.faturamento_total)} icon={<DollarSign size={20} />} color="#0A84FF" />
+              <StatCard label="Pedidos Pendentes" value={fmtNum(kpis.pedidos_pendentes)} icon={<ShoppingCart size={20} />} color="#FF6B35" />
+              <StatCard label="Pedidos Entregues/Rota" value={fmtNum(kpis.pedidos_em_rota)} icon={<TrendingUp size={20} />} color="#30D158" />
+            </>
+          ) : isAdmin ? (
+            <>
+              <StatCard label="Faturamento Bruto" value={fmt(kpis.faturamento_total)} icon={<DollarSign size={20} />} color="#8B5CF6" />
+              <StatCard label="Meus Ganhos (Líquido)" value={fmt(kpis.lucro_liquido || 0)} icon={<DollarSign size={20} />} color="#30D158" />
+              <StatCard label="Taxa Plataforma" value={fmt(kpis.comissao_plataforma || 0)} icon={<Activity size={20} />} color="#FF6B35" />
+              <StatCard label="Estoque Baixo" value={fmtNum(kpis.estoque_baixo || 0)} icon={<AlertTriangle size={20} />} color="#FF453A" />
+              <StatCard label="Meus Produtos" value={fmtNum(kpis.total_produtos)} icon={<Package size={20} />} color="#0A84FF" />
             </>
           ) : (
             <>
               <StatCard label="Faturamento" value={fmt(kpis.faturamento_total)} icon={<DollarSign size={20} />} color="#0A84FF" />
+              <StatCard label="Lucro Plataforma" value={fmt(kpis.comissao_plataforma || 0)} icon={<Activity size={20} />} color="#30D158" />
               <StatCard label="Produtos" value={fmtNum(kpis.total_produtos)} icon={<Package size={20} />} color="#30D158" />
-              <StatCard label="Pendente/Rota" value={fmtNum(kpis.pedidos_pendentes + kpis.pedidos_em_rota)} icon={<ShoppingCart size={20} />} color="#FF6B35" />
+              <StatCard label="Pend/Rota" value={fmtNum(kpis.pedidos_pendentes + kpis.pedidos_em_rota)} icon={<ShoppingCart size={20} />} color="#FF6B35" />
               <StatCard label="Clientes" value={fmtNum(kpis.total_clientes)} icon={<Users size={20} />} color="#8B5CF6" />
               <StatCard label="Fornecedores" value={fmtNum(kpis.total_fornecedores)} icon={<Target size={20} />} color="#FFD60A" />
             </>

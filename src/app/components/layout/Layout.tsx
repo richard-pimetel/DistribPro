@@ -4,9 +4,11 @@ import { Toaster } from 'sonner';
 import { Sidebar } from './Sidebar';
 import { Header } from './Header';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
 
 export function Layout() {
   const { isAuthenticated, isLoading } = useAuth();
+  const { isCliente } = usePermissions();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   if (isLoading) {
@@ -29,6 +31,9 @@ export function Layout() {
   }
 
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+
+  // Clientes não pertencem ao painel admin — redirecionar para o portal deles
+  if (isCliente) return <Navigate to="/loja" replace />;
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#F5F7FA', fontFamily: "'Inter', sans-serif" }}>

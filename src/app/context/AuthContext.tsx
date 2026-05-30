@@ -31,24 +31,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const res = await authMe();
 
       if (res.success && res.data) {
-        let userWithId = res.data;
-        // If it's a client but missing clienteId, try to find it
-        if (userWithId.role === 'cliente' && !userWithId.clienteId) {
-          try {
-            const { getClientes } = await import('../services/api');
-            const clRes = await getClientes();
-            if (clRes.success && clRes.data) {
-              const match = clRes.data.find(c => c.email === userWithId.email);
-              if (match) {
-                userWithId = { ...userWithId, clienteId: match.id };
-              }
-            }
-          } catch (e) {
-            console.error('Falha ao recuperar ID de cliente:', e);
-          }
+        // Preservar campos extras que o /auth/me pode não retornar (fallback do localStorage)
+        const storedUser = JSON.parse(localStorage.getItem('dp_user') || 'null');
+        const userWithExtras: User = {
+          ...res.data,
+          // Se o backend retornou fornecedor_id, use-o; senão use o do localStorage
+          fornecedor_id: res.data.fornecedor_id ?? storedUser?.fornecedor_id ?? undefined,
+          clienteId: res.data.clienteId ?? storedUser?.clienteId ?? undefined,
+        };
+        // Para admin, se o backend ainda não retorna fornecedor_id, usa o próprio id como fallback
+        if (userWithExtras.role === 'admin' && !userWithExtras.fornecedor_id) {
+          userWithExtras.fornecedor_id = userWithExtras.id;
         }
-        setUser(userWithId);
-        localStorage.setItem('dp_user', JSON.stringify(userWithId));
+        setUser(userWithExtras);
+        localStorage.setItem('dp_user', JSON.stringify(userWithExtras));
       } else {
         localStorage.removeItem('distribpro_token');
         localStorage.removeItem('dp_user');
@@ -66,27 +62,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.removeItem('distribpro_token');
     localStorage.removeItem('dp_user');
     
-    let userWithId = usr;
-    // If client but missing ID, try to find it now
-    if (userWithId.role === 'cliente' && !userWithId.clienteId) {
-      try {
-        const { getClientes } = await import('../services/api');
-        const clRes = await getClientes();
-        if (clRes.success && clRes.data) {
-          const match = clRes.data.find(c => c.email === userWithId.email);
-          if (match) {
-            userWithId = { ...userWithId, clienteId: match.id };
-          }
-        }
-      } catch (e) {
-        console.error('Falha ao recuperar ID de cliente no login:', e);
-      }
-    }
+    // Para admin, se o backend não retornou fornecedor_id explícito, usa o próprio id como fallback
+    const userWithExtras: User = {
+      ...usr,
+      fornecedor_id: usr.fornecedor_id ?? (usr.role === 'admin' ? usr.id : undefined),
+    };
 
     localStorage.setItem('distribpro_token', tkn);
-    localStorage.setItem('dp_user', JSON.stringify(userWithId));
+    localStorage.setItem('dp_user', JSON.stringify(userWithExtras));
     setToken(tkn);
-    setUser(userWithId);
+    setUser(userWithExtras);
   };
 
   const logout = async () => {

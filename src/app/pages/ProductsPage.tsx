@@ -1,11 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Plus, Search, Edit2, Trash2, AlertTriangle, Package, MapPin } from 'lucide-react';
+import { Navigate } from 'react-router';
 import { toast } from 'sonner';
 import { getProdutos, createProduto, updateProduto, deleteProduto, getFornecedores } from '../services/api';
 import type { Produto, Fornecedor } from '../types';
 import { Badge, StatusBadge } from '../components/ui/Badge';
 import { Modal, ConfirmModal } from '../components/ui/Modal';
 import { FormField, Input, Select } from '../components/ui/FormField';
+import { usePermissions } from '../hooks/usePermissions';
+import { useAuth } from '../context/AuthContext';
 
 const categorias = ['Eletrônicos', 'Periféricos', 'Áudio', 'Armazenamento', 'Acessórios', 'Componentes', 'Mobiliário'];
 const unidades = ['Un', 'Kg', 'Lt', 'Cx', 'Mtr'];
@@ -18,12 +21,21 @@ const empty: Omit<Produto, 'id' | 'criado_em' | 'atualizado_em'> = {
   preco: 0, 
   estoque: 0, 
   estoque_min: 5, 
-  fornecedor_id: 1, 
+  fornecedor_id: '', 
+  taxa_fornecedor: 90,
+  taxa_operador: 10,
   status: 'Ativo',
-  descricao: ''
+  descricao: '',
+  img_url: ''
 };
 
 export function ProductsPage() {
+  const { isCliente, isAdmin, isOperador } = usePermissions();
+  const { user } = useAuth();
+
+  // Clientes não podem acessar o painel de produtos do admin
+  if (isCliente) return <Navigate to="/loja/catalogo" replace />;
+
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,8 +53,25 @@ export function ProductsPage() {
     setLoading(true);
     try {
       const [pRes, fRes] = await Promise.all([getProdutos(), getFornecedores()]);
-      if (pRes.success && pRes.data) setProdutos(pRes.data);
-      if (fRes.success && fRes.data) setFornecedores(fRes.data);
+      
+      let finalProds = [];
+      if (pRes.success && pRes.data) {
+         finalProds = pRes.data;
+         if (isAdmin) {
+            finalProds = finalProds.filter(p => String(p.fornecedor_id) === String(user?.fornecedor_id));
+         }
+         setProdutos(finalProds);
+      }
+      
+      if (fRes.success && fRes.data) {
+        // Admin (Fornecedor) deve ver apenas o próprio cadastro no selector
+        if (isAdmin && user?.fornecedor_id) {
+          const myForn = fRes.data.filter(f => String(f.id) === String(user.fornecedor_id));
+          setFornecedores(myForn);
+        } else {
+          setFornecedores(fRes.data);
+        }
+      }
       
       if (!pRes.success) toast.error(pRes.error?.message || 'Erro ao carregar produtos.');
     } catch (err: any) {
@@ -64,7 +93,20 @@ export function ProductsPage() {
 
   const lowStock = produtos.filter(p => p.estoque <= p.estoque_min);
 
-  const openCreate = () => { setEditing(null); setForm(empty); setShowModal(true); };
+  // Para o Operador: agrupar produtos por fornecedor
+  const produtosByFornecedor = isOperador
+    ? fornecedores.reduce((acc, f) => {
+        const fProds = filtered.filter(p => String(p.fornecedor_id) === String(f.id));
+        if (fProds.length > 0) acc.push({ fornecedor: f, produtos: fProds });
+        return acc;
+      }, [] as { fornecedor: import('../types').Fornecedor; produtos: Produto[] }[])
+    : [];
+
+  const openCreate = () => { 
+    setEditing(null); 
+    setForm({ ...empty, fornecedor_id: isAdmin ? String(user?.fornecedor_id) : '' }); 
+    setShowModal(true); 
+  };
   
   const openEdit = (p: Produto) => { 
     setEditing(p); 
@@ -76,19 +118,38 @@ export function ProductsPage() {
       preco: p.preco, 
       estoque: p.estoque, 
       estoque_min: p.estoque_min, 
-      fornecedor_id: p.fornecedor_id || 1, 
+      fornecedor_id: p.fornecedor_id || '', 
+      taxa_fornecedor: p.taxa_fornecedor ?? 90,
+      taxa_operador: p.taxa_operador ?? 10,
       status: p.status,
-      descricao: p.descricao || ''
+      descricao: p.descricao || '',
+      img_url: p.img_url || p.img_produtos || ''
     }); 
     setShowModal(true); 
   };
 
   const handleSave = async () => {
     if (!form.nome || !form.sku) { toast.error('Nome e SKU são obrigatórios.'); return; }
+    if (!form.fornecedor_id) { toast.error('O produto precisa estar vinculado a um fornecedor.'); return; }
+
+    const payload: any = {
+      nome: form.nome,
+      sku: form.sku,
+      categoria: form.categoria,
+      unidade: form.unidade,
+      preco: Number(form.preco),
+      estoque: Number(form.estoque),
+      estoque_min: Number(form.estoque_min),
+      fornecedor_id: Number(form.fornecedor_id),
+      status: form.status,
+      descricao: form.descricao,
+      img_produtos: (form as any).img_url || undefined,
+    };
+
     setSaving(true);
     try {
       if (editing) {
-        const res = await updateProduto(editing.id, form);
+        const res = await updateProduto(editing.id, payload);
         if (res.success) { 
           toast.success('Produto atualizado!'); 
           load(); 
@@ -97,7 +158,7 @@ export function ProductsPage() {
           toast.error(res.error?.message || 'Erro ao atualizar produto.');
         }
       } else {
-        const res = await createProduto(form);
+        const res = await createProduto(payload);
         if (res.success) { 
           toast.success('Produto criado!'); 
           load(); 
@@ -181,80 +242,177 @@ export function ProductsPage() {
         <span style={{ fontSize: '12px', color: '#8896A5', marginLeft: 'auto' }}>{filtered.length} resultado(s)</span>
       </div>
 
-      {/* Table */}
-      <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #DDE3EE', boxShadow: '0 2px 12px rgba(10,30,60,0.07)', overflow: 'hidden' }}>
-        {loading ? (
-          <div style={{ padding: '60px', textAlign: 'center' }}>
-            <div style={{ width: '28px', height: '28px', border: '3px solid #DDE3EE', borderTopColor: '#0A84FF', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
-            <p style={{ color: '#8896A5', fontSize: '13px' }}>Carregando produtos…</p>
-          </div>
-        ) : filtered.length === 0 ? (
-          <div style={{ padding: '60px', textAlign: 'center' }}>
-            <Package size={40} color="#DDE3EE" style={{ margin: '0 auto 16px' }} />
-            <p style={{ fontSize: '16px', fontWeight: 700, color: '#4A5568', margin: '0 0 6px' }}>Nenhum produto encontrado</p>
-            <p style={{ fontSize: '13px', color: '#8896A5' }}>Ajuste os filtros ou cadastre um novo produto.</p>
-          </div>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ background: '#F5F7FA' }}>
-                  {['Produto', 'SKU', 'Categoria', 'Preço', 'Un.', 'Estoque', 'Status', 'Ações'].map(h => (
-                    <th key={h} style={{ padding: '11px 18px', fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.9px', color: '#8896A5', textAlign: 'left', borderBottom: '1px solid #DDE3EE', whiteSpace: 'nowrap' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(p => {
-                  const isLow = p.estoque <= p.estoque_min;
-                  return (
-                    <tr key={p.id} style={{ transition: 'background 0.15s' }}
-                      onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(10,132,255,0.02)'}
-                      onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
-                    >
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                          <div style={{ width: '36px', height: '36px', background: '#F5F7FA', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #DDE3EE', flexShrink: 0 }}>
-                            <Package size={15} color="#8896A5" />
-                          </div>
-                          <div>
-                            <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#0D1B2A' }}>{p.nome}</div>
-                            <div style={{ fontSize: '11px', color: '#8896A5' }}>
-                              {fornecedores.find(f => Number(f.id) === Number(p.fornecedor_id))?.nome || `ID Fornecedor: ${p.fornecedor_id}`}
+      {/* Table — Operador sees grouped by fornecedor; Fornecedor sees flat */}
+      {isOperador ? (
+        // ── Vista do Operador: Produtos agrupados por Fornecedor ──────────
+        <div>
+          {loading ? (
+            <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #DDE3EE', padding: '60px', textAlign: 'center' }}>
+              <div style={{ width: '28px', height: '28px', border: '3px solid #DDE3EE', borderTopColor: '#0A84FF', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+              <p style={{ color: '#8896A5', fontSize: '13px' }}>Carregando produtos…</p>
+            </div>
+          ) : produtosByFornecedor.length === 0 ? (
+            <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #DDE3EE', padding: '60px', textAlign: 'center' }}>
+              <Package size={40} color="#DDE3EE" style={{ margin: '0 auto 16px' }} />
+              <p style={{ fontSize: '16px', fontWeight: 700, color: '#4A5568', margin: '0 0 6px' }}>Nenhum produto encontrado</p>
+              <p style={{ fontSize: '13px', color: '#8896A5' }}>Ajuste os filtros ou cadastre um novo produto.</p>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {produtosByFornecedor.map(({ fornecedor: forn, produtos: fProds }, grpIdx) => {
+                const grpColors = ['#0A84FF', '#30D158', '#FF6B35', '#8B5CF6', '#FF453A'];
+                const grpColor = grpColors[grpIdx % grpColors.length];
+                return (
+                  <div key={forn.id} style={{ background: '#fff', borderRadius: '14px', border: '1px solid #DDE3EE', boxShadow: '0 2px 12px rgba(10,30,60,0.07)', overflow: 'hidden' }}>
+                    {/* Supplier header */}
+                    <div style={{ padding: '14px 20px', background: '#F5F7FA', borderBottom: '1px solid #DDE3EE', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                      <div style={{ width: '32px', height: '32px', borderRadius: '8px', background: `${grpColor}15`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <MapPin size={14} color={grpColor} />
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '14px', fontWeight: 700, color: '#0D1B2A' }}>{forn.nome}</div>
+                        <div style={{ fontSize: '11px', color: '#8896A5' }}>{fProds.length} produto(s) · {forn.cidade}/{forn.estado}</div>
+                      </div>
+                      <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <span style={{ background: `${grpColor}15`, color: grpColor, fontSize: '11px', fontWeight: 700, padding: '3px 10px', borderRadius: '20px', border: `1px solid ${grpColor}30` }}>
+                          {forn.categoria}
+                        </span>
+                      </div>
+                    </div>
+                    {/* Products table */}
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <thead>
+                          <tr style={{ background: '#FAFBFC' }}>
+                            {['Produto', 'SKU', 'Categoria', 'Comissão Op.', 'Preço', 'Estoque', 'Status', 'Ações'].map(h => (
+                              <th key={h} style={{ padding: '10px 18px', fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.9px', color: '#8896A5', textAlign: 'left', borderBottom: '1px solid #DDE3EE', whiteSpace: 'nowrap' }}>{h}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {fProds.map(p => {
+                            const isLow = p.estoque <= p.estoque_min;
+                            return (
+                              <tr key={p.id} style={{ transition: 'background 0.15s' }}
+                                onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(10,132,255,0.02)'}
+                                onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                              >
+                                <td style={{ padding: '12px 18px', borderBottom: '1px solid #F5F7FA' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                                    <div style={{ width: '32px', height: '32px', background: '#F5F7FA', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #DDE3EE', flexShrink: 0 }}>
+                                      <Package size={13} color="#8896A5" />
+                                    </div>
+                                    <div style={{ fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{p.nome}</div>
+                                  </div>
+                                </td>
+                                <td style={{ padding: '12px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '12px', color: '#4A5568', fontFamily: 'monospace' }}>{p.sku}</td>
+                                <td style={{ padding: '12px 18px', borderBottom: '1px solid #F5F7FA' }}><Badge variant="neutral">{p.categoria}</Badge></td>
+                                <td style={{ padding: '12px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', fontWeight: 600, color: '#30D158' }}>
+                                  {p.taxa_operador || 0}% ({fmtPrice(p.preco * ((p.taxa_operador || 0) / 100))})
+                                </td>
+                                <td style={{ padding: '12px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{fmtPrice(p.preco)}</td>
+                                <td style={{ padding: '12px 18px', borderBottom: '1px solid #F5F7FA' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                                    <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: isLow ? '#FF453A' : '#30D158' }} />
+                                    <span style={{ fontSize: '13px', fontWeight: 600, color: isLow ? '#C0392B' : '#0D1B2A' }}>{p.estoque}</span>
+                                    {isLow && <AlertTriangle size={12} color="#A07800" />}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '12px 18px', borderBottom: '1px solid #F5F7FA' }}><StatusBadge status={p.status.toLowerCase() as any} /></td>
+                                <td style={{ padding: '12px 18px', borderBottom: '1px solid #F5F7FA' }}>
+                                  <div style={{ display: 'flex', gap: '6px' }}>
+                                    <button onClick={() => openEdit(p)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0A84FF', transition: 'all 0.15s' }}>
+                                      <Edit2 size={13} />
+                                    </button>
+                                    <button onClick={() => setDeleteTarget(p)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF453A', transition: 'all 0.15s' }}>
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        // ── Vista do Fornecedor (admin): tabela plana com apenas seus produtos ──
+        <div style={{ background: '#fff', borderRadius: '14px', border: '1px solid #DDE3EE', boxShadow: '0 2px 12px rgba(10,30,60,0.07)', overflow: 'hidden' }}>
+          {loading ? (
+            <div style={{ padding: '60px', textAlign: 'center' }}>
+              <div style={{ width: '28px', height: '28px', border: '3px solid #DDE3EE', borderTopColor: '#0A84FF', borderRadius: '50%', animation: 'spin 0.8s linear infinite', margin: '0 auto 12px' }} />
+              <p style={{ color: '#8896A5', fontSize: '13px' }}>Carregando produtos…</p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: '60px', textAlign: 'center' }}>
+              <Package size={40} color="#DDE3EE" style={{ margin: '0 auto 16px' }} />
+              <p style={{ fontSize: '16px', fontWeight: 700, color: '#4A5568', margin: '0 0 6px' }}>Nenhum produto encontrado</p>
+              <p style={{ fontSize: '13px', color: '#8896A5' }}>Ajuste os filtros ou cadastre um novo produto.</p>
+            </div>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr style={{ background: '#F5F7FA' }}>
+                    {['Produto', 'SKU', 'Categoria', 'Preço', 'Un.', 'Estoque', 'Status', 'Ações'].map(h => (
+                      <th key={h} style={{ padding: '11px 18px', fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.9px', color: '#8896A5', textAlign: 'left', borderBottom: '1px solid #DDE3EE', whiteSpace: 'nowrap' }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map(p => {
+                    const isLow = p.estoque <= p.estoque_min;
+                    return (
+                      <tr key={p.id} style={{ transition: 'background 0.15s' }}
+                        onMouseEnter={e => (e.currentTarget as HTMLElement).style.background = 'rgba(10,132,255,0.02)'}
+                        onMouseLeave={e => (e.currentTarget as HTMLElement).style.background = 'transparent'}
+                      >
+                        <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <div style={{ width: '36px', height: '36px', background: '#F5F7FA', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', border: '1px solid #DDE3EE', flexShrink: 0 }}>
+                              <Package size={15} color="#8896A5" />
                             </div>
+                            <div style={{ fontSize: '13.5px', fontWeight: 600, color: '#0D1B2A' }}>{p.nome}</div>
                           </div>
-                        </div>
-                      </td>
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '12.5px', color: '#4A5568', fontFamily: 'monospace' }}>{p.sku}</td>
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}><Badge variant="neutral">{p.categoria}</Badge></td>
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{fmtPrice(p.preco)}</td>
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{p.unidade}</td>
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-                          <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: isLow ? '#FF453A' : '#30D158' }} />
-                          <span style={{ fontSize: '13px', fontWeight: 600, color: isLow ? '#C0392B' : '#0D1B2A' }}>{p.estoque}</span>
-                          {isLow && <AlertTriangle size={12} color="#A07800" />}
-                        </div>
-                      </td>
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}><StatusBadge status={p.status.toLowerCase() as any} /></td>
-                      <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
-                        <div style={{ display: 'flex', gap: '6px' }}>
-                          <button onClick={() => openEdit(p)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0A84FF', transition: 'all 0.15s' }}>
-                            <Edit2 size={13} />
-                          </button>
-                          <button onClick={() => setDeleteTarget(p)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF453A', transition: 'all 0.15s' }}>
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                        </td>
+                        <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '12.5px', color: '#4A5568', fontFamily: 'monospace' }}>{p.sku}</td>
+                        <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}><Badge variant="neutral">{p.categoria}</Badge></td>
+                        <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', fontWeight: 600, color: '#0D1B2A' }}>{fmtPrice(p.preco)}</td>
+                        <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA', fontSize: '13px', color: '#4A5568' }}>{p.unidade}</td>
+                        <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                            <div style={{ width: '7px', height: '7px', borderRadius: '50%', background: isLow ? '#FF453A' : '#30D158' }} />
+                            <span style={{ fontSize: '13px', fontWeight: 600, color: isLow ? '#C0392B' : '#0D1B2A' }}>{p.estoque}</span>
+                            {isLow && <AlertTriangle size={12} color="#A07800" />}
+                          </div>
+                        </td>
+                        <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}><StatusBadge status={p.status.toLowerCase() as any} /></td>
+                        <td style={{ padding: '13px 18px', borderBottom: '1px solid #F5F7FA' }}>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button onClick={() => openEdit(p)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0A84FF', transition: 'all 0.15s' }}>
+                              <Edit2 size={13} />
+                            </button>
+                            <button onClick={() => setDeleteTarget(p)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF453A', transition: 'all 0.15s' }}>
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
 
       {/* Create/Edit Modal */}
       <Modal
@@ -290,22 +448,65 @@ export function ProductsPage() {
           <FormField label="Preço (R$)">
             <Input type="number" value={form.preco} onChange={e => setForm(f => ({ ...f, preco: Number(e.target.value) }))} min={0} step={0.01} />
           </FormField>
-          <FormField label="Fornecedor">
-            <Select value={form.fornecedor_id} onChange={e => setForm(f => ({ ...f, fornecedor_id: Number(e.target.value) }))}>
-              {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
-            </Select>
-          </FormField>
+          {/* Fornecedor — obrigatório para Operador; para Admin é fixo na própria conta */}
+          {isAdmin ? (
+            <FormField label="Fornecedor Responsável" required>
+              <Select
+                value={form.fornecedor_id}
+                disabled={true}
+                onChange={() => {}}
+              >
+                <option value="">Vinculado à sua conta</option>
+                {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome} (#{f.id})</option>)}
+              </Select>
+              {fornecedores.length === 0 && (
+                <p style={{ color: '#FF453A', fontSize: '11px', margin: '4px 0 0' }}>
+                  ⚠️ Nenhum cadastro de fornecedor vinculado à sua conta. Solicite ao Operador que crie seu cadastro.
+                </p>
+              )}
+            </FormField>
+          ) : isOperador ? (
+            <FormField label="Fornecedor" required>
+              <Select
+                value={form.fornecedor_id}
+                onChange={e => setForm(f => ({ ...f, fornecedor_id: e.target.value }))}
+              >
+                <option value="">Selecione o fornecedor…</option>
+                {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome} (#{f.id})</option>)}
+              </Select>
+            </FormField>
+          ) : null}
           <FormField label="Estoque Atual">
             <Input type="number" value={form.estoque} onChange={e => setForm(f => ({ ...f, estoque: Number(e.target.value) }))} min={0} />
           </FormField>
           <FormField label="Estoque Mínimo">
             <Input type="number" value={form.estoque_min} onChange={e => setForm(f => ({ ...f, estoque_min: Number(e.target.value) }))} min={0} />
           </FormField>
+          <FormField label="Taxa do Fornecedor (%)">
+            <Input type="number" value={form.taxa_fornecedor} onChange={e => setForm(f => ({ ...f, taxa_fornecedor: Number(e.target.value) }))} min={0} max={100} />
+          </FormField>
+          <FormField label="Taxa da Plataforma (%)">
+            <Input type="number" value={form.taxa_operador} onChange={e => setForm(f => ({ ...f, taxa_operador: Number(e.target.value) }))} min={0} max={100} />
+          </FormField>
           <FormField label="Status" fullWidth>
             <Select value={form.status} onChange={e => setForm(f => ({ ...f, status: e.target.value as any }))}>
               <option value="Ativo">Ativo</option>
               <option value="Inativo">Inativo</option>
             </Select>
+          </FormField>
+          <FormField label="URL da Imagem do Produto" fullWidth>
+            <Input
+              value={(form as any).img_url || ''}
+              onChange={e => setForm(f => ({ ...f, img_url: e.target.value } as any))}
+              placeholder="https://exemplo.com/imagem-do-produto.jpg"
+            />
+            {(form as any).img_url && (
+              <div style={{ marginTop: '8px', borderRadius: '8px', overflow: 'hidden', border: '1px solid #DDE3EE', maxHeight: '120px', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#F5F7FA' }}>
+                <img src={(form as any).img_url} alt="Preview" style={{ maxHeight: '120px', maxWidth: '100%', objectFit: 'contain' }}
+                  onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                />
+              </div>
+            )}
           </FormField>
           <FormField label="Descrição" fullWidth>
             <Input value={form.descricao} onChange={e => setForm(f => ({ ...f, descricao: e.target.value }))} placeholder="Opcional…" />

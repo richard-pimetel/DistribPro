@@ -1,10 +1,5 @@
 import type { ApiResponse, Produto, Cliente, Fornecedor, Pedido, EstoqueItem, KPIs, EntregaData, StatusPedidoData, Config, RelatorioVendas, RelatorioVendasProduto, RelatorioVendasCliente, RelatorioEstoque, RelatorioFinanceiro } from '../types';
 import { httpClient } from './httpClient';
-import {
-  mockProdutos, mockClientes, mockFornecedores,
-  mockPedidos, mockConfig
-} from './mockData';
-
 // ── AUTH (real API) ──────────────────────────────────────
 import { authLogin, authLogout, authMe, authUpdatePerfil, authUpdateSenha } from './authService';
 export { authLogin, authLogout, authMe, authUpdatePerfil, authUpdateSenha };

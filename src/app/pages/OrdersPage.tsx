@@ -40,6 +40,8 @@ export function OrdersPage() {
   });
 
   const isCliente = user?.role === 'cliente';
+  const isAdmin = user?.role === 'admin';
+  const isOperador = user?.role === 'operador';
 
   const load = async () => {
     setLoading(true);
@@ -51,14 +53,14 @@ export function OrdersPage() {
       
       if (resPed.success) {
         // If client, we should only see our own orders. 
-        // Note: Ideally the backend filters this, but we'll safeguard here.
+        // If admin(fornecedor), only orders where they are the supplier.
         const allPedidos = resPed.data || [];
         if (isCliente) {
           const targetId = user?.clienteId || user?.id;
-          setPedidos(allPedidos.filter(p => {
-            const cid = p.cliente_id || (p as any).clienteId;
-            return String(cid) === String(targetId);
-          }));
+          setPedidos(allPedidos.filter(p => String(p.cliente_id || (p as any).clienteId) === String(targetId)));
+        } else if (isAdmin) {
+          const targetId = user?.fornecedor_id;
+          setPedidos(allPedidos.filter(p => String(p.fornecedor_id) === String(targetId)));
         } else {
           setPedidos(allPedidos);
         }
@@ -128,6 +130,7 @@ export function OrdersPage() {
         clienteId: Number(targetClientId),
         // Secondary snake_case format
         cliente_id: Number(targetClientId),
+        fornecedor_id: Number(selectedProd?.fornecedor_id),
         
         destino: form.destino || 'Não informado',
         data_entrega: form.data_entrega,
@@ -144,8 +147,19 @@ export function OrdersPage() {
             nome_produto: selectedProd?.nome || ''
           }
         ],
+        produtos: [
+          {
+            produto_id: Number(form.produto_id),
+            quantidade: Number(form.qtd),
+            preco_unitario: selectedProd?.preco || 0
+          }
+        ],
         valorTotal: (selectedProd?.preco || 0) * form.qtd,
         valor_total: (selectedProd?.preco || 0) * form.qtd,
+        taxas_aplicadas: {
+          fornecedor_percentual: selectedProd?.taxa_fornecedor ?? 90,
+          operador_percentual: selectedProd?.taxa_operador ?? 10
+        },
         status: 'Pendente'
       };
 
@@ -315,9 +329,21 @@ export function OrdersPage() {
               <div style={{ fontSize: '16px', fontWeight: 800, color: '#0A84FF' }}>{fmtPrice(viewPedido.valor)}</div>
             </div>
             <div style={{ background: '#F5F7FA', padding: '12px', borderRadius: '8px' }}>
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#8896A5' }}>DATAL ENTREGA</div>
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#8896A5' }}>DATA ENTREGA</div>
               <div style={{ fontSize: '14px' }}>{fmtDate(viewPedido.data_entrega)}</div>
             </div>
+            {!isCliente && (viewPedido.taxa_fornecedor !== undefined) && (
+              <div style={{ background: '#F5F7FA', padding: '12px', borderRadius: '8px', gridColumn: 'span 2', display: 'flex', gap: '20px' }}>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#8896A5' }}>COMISSÃO FORNECEDOR ({viewPedido.taxa_fornecedor}%)</div>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#30D158' }}>{fmtPrice(viewPedido.valor * (viewPedido.taxa_fornecedor / 100))}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', fontWeight: 700, color: '#8896A5' }}>TAXA PLATAFORMA ({viewPedido.taxa_operador}%)</div>
+                  <div style={{ fontSize: '14px', fontWeight: 600, color: '#FF6B35' }}>{fmtPrice(viewPedido.valor * ((viewPedido.taxa_operador || 0) / 100))}</div>
+                </div>
+              </div>
+            )}
           </div>
         </Modal>
       )}

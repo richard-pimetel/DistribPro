@@ -19,23 +19,27 @@ export function RegisterPage() {
   const [email, setEmail] = useState('');
   const [senha, setSenha] = useState('');
   const [showPass, setShowPass] = useState(false);
-  const [role, setRole] = useState('cliente');
+  const [role, setRole] = useState<'cliente' | 'admin' | 'operador'>('cliente');
   const [loading, setLoading] = useState(false);
-  
-  // Additional Client Fields
+  const [aceitouTermos, setAceitouTermos] = useState(false);
+
+  // Additional Client Fields (Only shown if role === 'cliente')
   const [tipo, setTipo] = useState<'PJ' | 'PF'>('PJ');
   const [doc, setDoc] = useState('');
   const [tel, setTel] = useState('');
   const [cidade, setCidade] = useState('');
   const [estado, setEstado] = useState('SP');
-  const [limite, setLimite] = useState(0);
 
-  const estados = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
+  const estados = ['AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG', 'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'];
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!nome || !email || !senha) {
-      toast.error('Preencha todos os campos.');
+      toast.error('Preencha todos os campos obrigatórios.');
+      return;
+    }
+    if (!aceitouTermos) {
+      toast.error('Você deve aceitar os Termos de Uso para continuar.');
       return;
     }
     setLoading(true);
@@ -43,40 +47,40 @@ export function RegisterPage() {
       const res = await authRegister(nome, email, senha, role);
       if (res.success && res.data) {
         const { token, user } = res.data;
-        
+
         // 1. MUST LOGIN FIRST so localStorage token is set for subsequent API calls
         login(token, user);
 
-        // 2. If it's a client, promote to business clients list automatically
+        // 2. Apenas se for CLIENTE COMPRADOR, criamos o cadastro atrelado.
+        // Fornecedores (admin) e Operadores NÃO DEVEM ter registros falsos criados aqui.
         if (user.role === 'cliente') {
-           try {
-             const { createCliente } = await import('../services/api');
-             const clientRes = await createCliente({
-               nome: user.nome,
-               email: user.email,
-               tipo: tipo, 
-               doc: doc || (tipo === 'PJ' ? '00.000.000/0001-00' : '000.000.000-00'), 
-               tel: tel || '(00) 0000-0000',
-               cidade: cidade || 'Pendente',
-               estado: estado,
-               limite: Number(limite) || 0,
-               status: 'Ativo',
-               // @ts-ignore
-               userId: user.id
-             });
+          try {
+            const { createCliente } = await import('../services/api');
+            const clientRes = await createCliente({
+              nome: user.nome,
+              email: user.email,
+              tipo: tipo,
+              doc: doc || (tipo === 'PJ' ? '00.000.000/0001-00' : '000.000.000-00'),
+              tel: tel || '(00) 0000-0000',
+              cidade: cidade || 'Pendente',
+              estado: estado,
+              limite: 0,
+              status: 'Ativo',
+              // @ts-ignore
+              userId: user.id
+            });
 
-             if (clientRes.success && clientRes.data) {
-                // Update user object with the newly created business clienteId
-                const updatedUser = { ...user, clienteId: clientRes.data.id };
-                login(token, updatedUser); // Re-login with the augmented user object
-             }
-           } catch (e) {
-             console.error('Falha na vinculação automática de cliente:', e);
-           }
+            if (clientRes.success && clientRes.data) {
+              const updatedUser = { ...user, clienteId: clientRes.data.id };
+              login(token, updatedUser);
+            }
+          } catch (e) {
+            console.error('Falha na vinculação automática de cliente:', e);
+          }
         }
 
         toast.success(`Conta criada com sucesso! Bem-vindo, ${user.nome}!`);
-        navigate(user.role === 'cliente' ? '/pedidos' : '/dashboard');
+        navigate(user.role === 'cliente' ? '/loja' : '/dashboard');
       } else {
         toast.error(res.error?.message || 'Erro ao realizar cadastro.');
       }
@@ -98,15 +102,19 @@ export function RegisterPage() {
         {/* BG decoration */}
         <div style={{ position: 'absolute', top: '-80px', right: '-80px', width: '300px', height: '300px', background: 'rgba(255,255,255,0.06)', borderRadius: '50%' }} />
         <div style={{ position: 'absolute', bottom: '-60px', left: '-60px', width: '240px', height: '240px', background: 'rgba(255,255,255,0.05)', borderRadius: '50%' }} />
-        
+
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative', zIndex: 1 }}>
           <div style={{
-            width: '44px', height: '44px', background: 'rgba(255,255,255,0.2)',
-            borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(10px)',
+            width: '44px', height: '44px',
+            background: '#fff',
+            borderRadius: '12px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+            border: '1px solid rgba(255,255,255,0.2)'
           }}>
-            <Package size={22} color="#fff" />
+            <img src="/logo.png" alt="DistribPro Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <div>
             <div style={{ fontSize: '22px', fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#fff', letterSpacing: '-0.3px' }}>
@@ -164,29 +172,42 @@ export function RegisterPage() {
               <label style={{ fontSize: '12.5px', fontWeight: 600, color: '#4A5568', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Tipo de Conta
               </label>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
                 <button
                   type="button"
                   onClick={() => setRole('cliente')}
                   style={{
-                    padding: '10px', borderRadius: '10px', border: '1.5px solid',
+                    padding: '10px 4px', borderRadius: '10px', border: '1.5px solid',
                     borderColor: role === 'cliente' ? '#0A84FF' : '#DDE3EE',
                     background: role === 'cliente' ? 'rgba(10,132,255,0.05)' : '#fff',
                     color: role === 'cliente' ? '#0A84FF' : '#4A5568',
-                    fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+                    fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
                   }}
                 >
-                  Cliente
+                  Comprador
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRole('admin')}
+                  style={{
+                    padding: '10px 4px', borderRadius: '10px', border: '1.5px solid',
+                    borderColor: role === 'admin' ? '#0A84FF' : '#DDE3EE',
+                    background: role === 'admin' ? 'rgba(10,132,255,0.05)' : '#fff',
+                    color: role === 'admin' ? '#0A84FF' : '#4A5568',
+                    fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+                  }}
+                >
+                  Fornecedor
                 </button>
                 <button
                   type="button"
                   onClick={() => setRole('operador')}
                   style={{
-                    padding: '10px', borderRadius: '10px', border: '1.5px solid',
+                    padding: '10px 4px', borderRadius: '10px', border: '1.5px solid',
                     borderColor: role === 'operador' ? '#0A84FF' : '#DDE3EE',
                     background: role === 'operador' ? 'rgba(10,132,255,0.05)' : '#fff',
                     color: role === 'operador' ? '#0A84FF' : '#4A5568',
-                    fontSize: '13px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
+                    fontSize: '12px', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
                   }}
                 >
                   Operador
@@ -279,7 +300,7 @@ export function RegisterPage() {
             {role === 'cliente' && (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', background: '#fff', padding: '14px', borderRadius: '12px', border: '1px solid #DDE3EE', marginTop: '2px' }}>
                 <div style={{ gridColumn: 'span 2', fontSize: '10.5px', fontWeight: 700, color: '#0A84FF', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '2px' }}>Dados Adicionais de Cliente</div>
-                
+
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
                   <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#4A5568' }}>Tipo de Pessoa</label>
                   <select value={tipo} onChange={e => setTipo(e.target.value as any)} style={{ padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #DDE3EE', fontSize: '12.5px', outline: 'none' }}>
@@ -309,13 +330,21 @@ export function RegisterPage() {
                     {estados.map(est => <option key={est} value={est}>{est}</option>)}
                   </select>
                 </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                  <label style={{ fontSize: '10.5px', fontWeight: 600, color: '#4A5568' }}>Limite Sugerido</label>
-                  <input type="number" value={limite} onChange={e => setLimite(Number(e.target.value))} style={{ padding: '7px 10px', borderRadius: '8px', border: '1.5px solid #DDE3EE', fontSize: '12.5px', outline: 'none' }} />
-                </div>
               </div>
             )}
+
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '10px', marginTop: '6px' }}>
+              <input
+                type="checkbox"
+                id="termos"
+                checked={aceitouTermos}
+                onChange={e => setAceitouTermos(e.target.checked)}
+                style={{ marginTop: '2px', cursor: 'pointer' }}
+              />
+              <label htmlFor="termos" style={{ fontSize: '12px', color: '#667085', lineHeight: '1.4', cursor: 'pointer' }}>
+                Eu concordo com os <span style={{ color: '#0A84FF', textDecoration: 'underline' }}>Termos de Uso</span> e confirmo que li a <span style={{ color: '#0A84FF', textDecoration: 'underline' }}>Política de Privacidade</span> da plataforma de Marketplace.
+              </label>
+            </div>
 
             <button
               type="submit"

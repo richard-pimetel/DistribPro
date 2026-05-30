@@ -32,7 +32,11 @@ export function LoginPage() {
       if (res.success && res.data) {
         login(res.data.token, res.data.user);
         toast.success(`Bem-vindo, ${res.data.user.nome}!`);
-        navigate('/dashboard');
+        if (res.data.user.role === 'cliente') {
+          navigate('/loja');
+        } else {
+          navigate('/admin/dashboard');
+        }
       } else {
         toast.error(res.error?.message || 'Credenciais inválidas.');
       }
@@ -59,11 +63,15 @@ export function LoginPage() {
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative', zIndex: 1 }}>
           <div style={{
-            width: '44px', height: '44px', background: 'rgba(255,255,255,0.2)',
-            borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center',
-            backdropFilter: 'blur(10px)',
+            width: '44px', height: '44px',
+            background: '#fff',
+            borderRadius: '12px',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+            overflow: 'hidden',
+            border: '1px solid rgba(255,255,255,0.2)'
           }}>
-            <Package size={22} color="#fff" />
+            <img src="/logo.png" alt="DistribPro Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <div>
             <div style={{ fontSize: '22px', fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif", color: '#fff', letterSpacing: '-0.3px' }}>

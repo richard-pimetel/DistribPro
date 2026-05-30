@@ -6,6 +6,8 @@ import type { Fornecedor } from '../types';
 import { StatusBadge, Badge } from '../components/ui/Badge';
 import { Modal, ConfirmModal } from '../components/ui/Modal';
 import { FormField, Input, Select } from '../components/ui/FormField';
+import { useNavigate, Navigate } from 'react-router';
+import { usePermissions } from '../hooks/usePermissions';
 
 const estados = ['AC','AL','AP','AM','BA','CE','DF','ES','GO','MA','MT','MS','MG','PA','PB','PR','PE','PI','RJ','RN','RS','RO','RR','SC','SP','SE','TO'];
 const categorias = ['Eletrônicos', 'Periféricos', 'Áudio', 'Armazenamento', 'Acessórios', 'Componentes', 'Mobiliário', 'Outros'];
@@ -24,6 +26,10 @@ const emptyForm: Omit<Fornecedor, 'id' | 'criado_em' | 'atualizado_em'> = {
 };
 
 export function SuppliersPage() {
+  // ── Controle de Acesso: Apenas Operador pode gerenciar Fornecedores ──
+  const { isOperador } = usePermissions();
+  if (!isOperador) return <Navigate to="/admin/dashboard" replace />;
+
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -34,6 +40,7 @@ export function SuppliersPage() {
   const [saving, setSaving] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<Fornecedor | null>(null);
   const [deleting, setDeleting] = useState(false);
+  const navigate = useNavigate();
 
   const load = async () => {
     setLoading(true);
@@ -220,6 +227,9 @@ export function SuppliersPage() {
                     </div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px' }}>
+                    <button onClick={() => navigate(`/loja/catalogo?fornecedor_id=${f.id}`)} style={{ padding: '6px 12px', borderRadius: '7px', border: '1.5px solid #0A84FF', background: 'transparent', cursor: 'pointer', fontSize: '12px', fontWeight: 600, color: '#0A84FF', transition: 'all 0.15s' }}>
+                      Catálogo
+                    </button>
                     <button onClick={() => openEdit(f)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0A84FF' }}><Edit2 size={13} /></button>
                     <button onClick={() => setDeleteTarget(f)} style={{ width: '30px', height: '30px', borderRadius: '7px', border: '1.5px solid #DDE3EE', background: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#FF453A' }}><Trash2 size={13} /></button>
                   </div>

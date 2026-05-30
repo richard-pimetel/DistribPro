@@ -26,6 +26,8 @@ export const authRegister = async (
           nome: responseData.nome || nome,
           email: email,
           role: responseData.role || role,
+          fornecedor_id: responseData.fornecedor_id ?? undefined,
+          clienteId: responseData.clienteId ?? responseData.cliente_id ?? undefined,
         },
       },
     };
@@ -65,6 +67,8 @@ export const authLogin = async (
             nome: userPayload.nome || '',
             email: email,
             role: userPayload.role || 'Usuário',
+            fornecedor_id: userPayload.fornecedor_id ?? undefined,
+            clienteId: userPayload.clienteId ?? userPayload.cliente_id ?? undefined,
           },
         },
       };
@@ -115,11 +119,13 @@ export const authMe = async (): Promise<ApiResponse<User>> => {
     return {
       success: true,
       data: {
-        id: user.id || user._id || '',
+        id: String(user.id || user.userId || user._id || ''),
         nome: user.nome || user.name || user.nome_completo || '',
         email: user.email || '',
         role: user.role || user.cargo || user.perfil || 'Usuário',
         avatar: user.avatar || user.foto || undefined,
+        fornecedor_id: user.fornecedor_id ?? undefined,
+        clienteId: user.clienteId ?? user.cliente_id ?? undefined,
       },
     };
   } catch (err: any) {
@@ -147,11 +153,13 @@ export const authUpdatePerfil = async (
     return {
       success: true,
       data: {
-        id: user.id || user._id || '',
+        id: String(user.id || user.userId || user._id || ''),
         nome: user.nome || user.name || user.nome_completo || '',
         email: user.email || '',
         role: user.role || user.cargo || user.perfil || 'Usuário',
         avatar: user.avatar || user.foto || undefined,
+        fornecedor_id: user.fornecedor_id ?? undefined,
+        clienteId: user.clienteId ?? user.cliente_id ?? undefined,
       },
     };
   } catch (err: any) {

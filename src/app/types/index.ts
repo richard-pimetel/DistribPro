@@ -5,6 +5,7 @@ export interface User {
   role: string;
   avatar?: string;
   clienteId?: number | string;
+  fornecedor_id?: number | string;
 }
 
 export interface EstoqueItem {
@@ -25,14 +26,17 @@ export interface Produto {
   preco: number;
   estoque: number;
   estoque_min: number;
-  fornecedor_id: number;
+  fornecedor_id: string | number; // Administrador/Fornecedor responsável
+  taxa_fornecedor?: number; // % que vai para o fornecedor
+  taxa_operador?: number;   // % que fica com a plataforma
   status: 'Ativo' | 'Inativo';
   descricao?: string;
+  img_url?: string;          // campo auxiliar para URL de imagem (frontend)
+  img_produtos?: string;     // campo do banco de dados (backend)
   criado_em?: string;
   atualizado_em?: string;
-  // Optional field kept for compatibility if needed, but not in main backend docs
   custo?: number;
-  fornecedor?: string; // Kept for UI display convenience if mapped from ID
+  fornecedor?: string;
 }
 
 export interface Cliente {
@@ -72,18 +76,25 @@ export interface Fornecedor {
 
 export interface Pedido {
   id: number | string;
-  cliente_id: number;
+  cliente_id: string | number;
   cliente_nome: string;
-  produto_id: number;
+  produto_id: string | number;
   produto_nome: string;
+  fornecedor_id?: string | number; // Dono do produto
   qtd: number;
   valor: number;
+  taxa_fornecedor?: number;
+  taxa_operador?: number;
   destino: string;
   data_entrega: string;
   status: 'Pendente' | 'Confirmado' | 'Em Rota' | 'Entregue' | 'Cancelado';
+  status_pagamento?: 'Pendente' | 'Aprovado' | 'Recusado';
   obs?: string;
   criado_em?: string;
   atualizado_em?: string;
+  total?: number;
+  valor_total?: number;
+  valorTotal?: number;
 }
 
 export interface KPIs {
@@ -93,7 +104,9 @@ export interface KPIs {
   pedidos_pendentes: number;
   pedidos_em_rota: number;
   faturamento_total: number;
-  estoque_baixo: number;
+  estoque_baixo?: number;
+  lucro_liquido?: number;
+  comissao_plataforma?: number;
 }
 
 export interface EntregaData {

@@ -5,6 +5,7 @@ import {
   Settings, LogOut, BarChart3, Menu, X, ChevronRight, Boxes
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { usePermissions } from '../../hooks/usePermissions';
 import { toast } from 'sonner';
 
 interface SidebarProps {
@@ -20,23 +21,31 @@ interface NavItem {
 }
 
 const mainNav: NavItem[] = [
-  { to: '/dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
+  { to: '/admin/dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard' },
 ];
 
-const registrosNav: NavItem[] = [
-  { to: '/produtos', icon: <Package size={18} />, label: 'Produtos', badge: 4 },
-  { to: '/clientes', icon: <Users size={18} />, label: 'Clientes' },
-  { to: '/fornecedores', icon: <Truck size={18} />, label: 'Fornecedores' },
+/**
+ * Registros section:
+ * - Operador: Produtos + Clientes + Fornecedores
+ * - Admin (Fornecedor): Produtos apenas
+ */
+const getRegistrosNav = (isOperador: boolean): NavItem[] => {
+  const base: NavItem[] = [{ to: '/admin/produtos', icon: <Package size={18} />, label: 'Produtos' }];
+  if (isOperador) {
+    base.push({ to: '/admin/clientes', icon: <Users size={18} />, label: 'Clientes' });
+    base.push({ to: '/admin/fornecedores', icon: <Truck size={18} />, label: 'Fornecedores' });
+  }
+  return base;
+};
+
+const getOperacoesNav = (): NavItem[] => [
+  { to: '/admin/pedidos', icon: <ShoppingCart size={18} />, label: 'Pedidos' },
+  { to: '/admin/estoque', icon: <Boxes size={18} />, label: 'Estoque' },
+  { to: '/admin/relatorios', icon: <BarChart3 size={18} />, label: 'Relatórios' },
 ];
 
-const operacoesNav: NavItem[] = [
-  { to: '/pedidos', icon: <ShoppingCart size={18} />, label: 'Pedidos' },
-  { to: '/estoque', icon: <Boxes size={18} />, label: 'Estoque' },
-  { to: '/relatorios', icon: <BarChart3 size={18} />, label: 'Relatórios' },
-];
-
-const sistemaNav: NavItem[] = [
-  { to: '/configuracoes', icon: <Settings size={18} />, label: 'Configurações' },
+const sistemaAdminNav: NavItem[] = [
+  { to: '/admin/configuracoes', icon: <Settings size={18} />, label: 'Configurações' },
 ];
 
 function NavGroup({ label, items }: { label: string; items: NavItem[] }) {
@@ -87,6 +96,7 @@ function NavGroup({ label, items }: { label: string; items: NavItem[] }) {
 
 export function Sidebar({ isOpen, onClose }: SidebarProps) {
   const { user, logout } = useAuth();
+  const { isAdmin, isOperador, isAdminOrOperador } = usePermissions();
   const navigate = useNavigate();
 
   const handleLogout = () => {
@@ -96,10 +106,6 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
   };
 
   const initials = user?.nome?.split(' ').slice(0, 2).map(n => n[0]).join('').toUpperCase() || 'AM';
-
-  // Role-based logic
-  const isCliente = user?.role === 'cliente';
-  const isAdminOrOperador = user?.role === 'admin' || user?.role === 'operador' || user?.role === 'Usuário';
 
   return (
     <>
@@ -138,12 +144,14 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         }}>
           <div style={{
             width: '38px', height: '38px',
-            background: 'linear-gradient(135deg, #0A84FF, #3B9EFF)',
+            background: '#fff',
             borderRadius: '10px',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 4px 14px rgba(10,132,255,0.35)',
+            boxShadow: '0 4px 14px rgba(0,0,0,0.06)',
+            overflow: 'hidden',
+            border: '1px solid #DDE3EE',
           }}>
-            <Package size={20} color="#fff" />
+            <img src="/logo.png" alt="DistribPro Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
           </div>
           <div>
             <div style={{ fontSize: '18px', fontWeight: 800, fontFamily: "'Plus Jakarta Sans', sans-serif", letterSpacing: '-0.3px', color: '#0D1B2A' }}>
@@ -158,27 +166,21 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
 
         {/* Nav */}
         <div style={{ flex: 1, overflowY: 'auto', paddingBottom: '8px' }}>
-          <NavGroup label="Principal" items={mainNav} />
-          
-          {isAdminOrOperador && (
-            <>
-              <NavGroup label="Cadastros" items={registrosNav} />
-              <NavGroup label="Operações" items={operacoesNav} />
-              <NavGroup label="Sistema" items={sistemaNav} />
-            </>
-          )}
+          <NavGroup label="Principal" items={[
+            { to: '/admin/dashboard', icon: <LayoutDashboard size={18} />, label: 'Dashboard' }
+          ]} />
 
-          {isCliente && (
-            <NavGroup label="Minha Conta" items={[
-              { to: '/pedidos', icon: <ShoppingCart size={18} />, label: 'Meus Pedidos' },
-            ]} />
+          <NavGroup label="Registros" items={getRegistrosNav(isOperador)} />
+          <NavGroup label="Operações" items={getOperacoesNav()} />
+          {isOperador && (
+            <NavGroup label="Sistema" items={sistemaAdminNav} />
           )}
         </div>
 
         {/* User footer */}
         <div style={{ borderTop: '1px solid #DDE3EE', padding: '14px 12px' }}>
           <NavLink
-            to="/perfil"
+            to="/admin/perfil"
             style={{ textDecoration: 'none' }}
           >
             <div style={{
